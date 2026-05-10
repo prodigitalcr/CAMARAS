@@ -37,7 +37,8 @@
             projectId: "camaras-757d8",
             storageBucket: "camaras-757d8.firebasestorage.app",
             messagingSenderId: "370746294800",
-            appId: "1:370746294800:web:77034554f64eee02aa8095"
+            appId: "1:370746294800:web:77034554f64eee02aa8095",
+            measurementId: "G-491P4P2FD1"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -149,12 +150,13 @@
                 const canvas = document.getElementById('procCanvas');
                 const ctx = canvas.getContext('2d');
 
-                // Enviar fotograma cada 800ms (ajustable para velocidad)
+                // Enviar fotograma cada 800ms
                 streamInterval = setInterval(async () => {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const base64Frame = canvas.toDataURL('image/jpeg', 0.5); // Comprimido para rapidez
+                    const base64Frame = canvas.toDataURL('image/jpeg', 0.5); 
 
-                    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'streams', user.uid), {
+                    // CORRECCIÓN: Se cambió 'streams' por 'cameras' para respetar las reglas de Firebase
+                    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid), {
                         accountId,
                         frame: base64Frame,
                         lastSeen: serverTimestamp(),
@@ -170,7 +172,8 @@
 
         // --- LÓGICA DE MONITOR ---
         function startMonitoring() {
-            const streamsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'streams');
+            // CORRECCIÓN: Se cambió 'streams' por 'cameras' para coincidir con la escritura
+            const streamsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras');
             onSnapshot(streamsCol, (snapshot) => {
                 const list = document.getElementById('camList');
                 if (!list) return;
@@ -179,7 +182,16 @@
                     .map(d => ({id: d.id, ...d.data()}))
                     .filter(s => s.accountId === accountId);
 
-                if (activeStreams.length === 0) return;
+                if (activeStreams.length === 0) {
+                    list.innerHTML = `
+                        <div class="col-span-full py-20 text-center opacity-20">
+                            <i data-lucide="scan-eye" class="w-12 h-12 mx-auto mb-4"></i>
+                            <p class="text-xs font-bold uppercase tracking-[0.3em]">Buscando transmisiones activas...</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
 
                 list.innerHTML = activeStreams.map(s => `
                     <div class="video-container shadow-2xl border border-slate-800 group">
@@ -206,7 +218,8 @@
         window.stopCamera = async () => {
             clearInterval(streamInterval);
             if (user) {
-                await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'streams', user.uid));
+                // CORRECCIÓN: Se eliminó el stream temporal de la base de datos 'cameras' al cerrar la cámara
+                await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid));
             }
             location.reload();
         };
