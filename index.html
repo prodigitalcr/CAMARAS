@@ -150,19 +150,19 @@
                 const canvas = document.getElementById('procCanvas');
                 const ctx = canvas.getContext('2d');
 
-                // Enviar fotograma cada 800ms
+                // Enviar fotograma cada 150ms para mayor fluidez (~6.6 fps)
                 streamInterval = setInterval(async () => {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const base64Frame = canvas.toDataURL('image/jpeg', 0.5); 
+                    // Comprimido un poco más (0.3) para compensar la alta velocidad de envío
+                    const base64Frame = canvas.toDataURL('image/jpeg', 0.3); 
 
-                    // CORRECCIÓN: Se cambió 'streams' por 'cameras' para respetar las reglas de Firebase
                     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid), {
                         accountId,
                         frame: base64Frame,
                         lastSeen: serverTimestamp(),
                         name: 'Cam-' + user.uid.substring(0,4).toUpperCase()
                     });
-                }, 800);
+                }, 150); // Reducido de 800ms a 150ms
 
             } catch (err) {
                 alert("Error al acceder a la cámara. Por favor permite el acceso.");
@@ -172,7 +172,6 @@
 
         // --- LÓGICA DE MONITOR ---
         function startMonitoring() {
-            // CORRECCIÓN: Se cambió 'streams' por 'cameras' para coincidir con la escritura
             const streamsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras');
             onSnapshot(streamsCol, (snapshot) => {
                 const list = document.getElementById('camList');
@@ -218,7 +217,6 @@
         window.stopCamera = async () => {
             clearInterval(streamInterval);
             if (user) {
-                // CORRECCIÓN: Se eliminó el stream temporal de la base de datos 'cameras' al cerrar la cámara
                 await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid));
             }
             location.reload();
