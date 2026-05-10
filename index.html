@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CamViewer Pro | Seguridad Total</title>
+    <title>CamViewer Pro | Calidad Balanceada</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -23,7 +23,7 @@
         </div>
     </div>
 
-    <!-- Canvas oculto para procesar fotogramas -->
+    <!-- Canvas para procesar fotogramas -->
     <canvas id="procCanvas" width="640" height="480"></canvas>
 
     <script type="module">
@@ -31,6 +31,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+        // Credenciales originales
         const firebaseConfig = {
             apiKey: "AIzaSyBpbTRTUWomLgUqnL46nepKnXZQIPRimlI",
             authDomain: "camaras-757d8.firebaseapp.com",
@@ -53,7 +54,7 @@
 
         const appDiv = document.getElementById('app');
 
-        // --- GESTIÓN DE VISTAS ---
+        // --- RENDERIZADO DE INTERFAZ ---
         function render() {
             if (!user) return;
             if (!accountId) return renderLogin();
@@ -66,10 +67,10 @@
                 <div class="min-h-screen flex items-center justify-center p-6">
                     <div class="w-full max-w-sm bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
                         <div class="flex justify-center mb-6 text-emerald-500"><i data-lucide="shield-check" class="w-16 h-16"></i></div>
-                        <h1 class="text-3xl font-black text-center mb-2 tracking-tight">CAM-PRO</h1>
-                        <p class="text-slate-500 text-center mb-8 text-sm uppercase tracking-widest font-bold">Acceso Seguro</p>
-                        <input id="accInput" type="text" placeholder="ID DE GRUPO" class="w-full bg-black border border-slate-700 p-5 rounded-2xl mb-4 text-center text-2xl font-mono text-emerald-400 focus:border-emerald-500 outline-none uppercase">
-                        <button onclick="window.setAccount()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-5 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-lg shadow-emerald-900/20">ENTRAR</button>
+                        <h1 class="text-3xl font-black text-center mb-2 tracking-tight text-white">CAM-PRO</h1>
+                        <p class="text-slate-500 text-center mb-8 text-xs uppercase tracking-widest font-bold">Modo Balanceado</p>
+                        <input id="accInput" type="text" placeholder="ID GRUPO" class="w-full bg-black border border-slate-700 p-5 rounded-2xl mb-4 text-center text-2xl font-mono text-emerald-400 focus:border-emerald-500 outline-none uppercase">
+                        <button onclick="window.setAccount()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-5 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-lg shadow-emerald-900/20">ACCEDER</button>
                     </div>
                 </div>`;
             lucide.createIcons();
@@ -78,16 +79,16 @@
         function renderModeSelection() {
             appDiv.innerHTML = `
                 <div class="min-h-screen flex flex-col items-center justify-center p-6 gap-4">
-                    <p class="text-slate-500 text-xs font-bold tracking-[0.3em] uppercase">Conectado a: ${accountId}</p>
-                    <button onclick="window.setMode('monitor')" class="w-full max-w-sm bg-slate-900 p-10 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-emerald-500 transition-all">
-                        <i data-lucide="layout-grid" class="w-12 h-12 text-emerald-500"></i>
-                        <span class="font-black text-xl tracking-tight">VER MONITORES</span>
+                    <p class="text-slate-500 text-[10px] font-bold tracking-[0.3em] uppercase">Red: ${accountId}</p>
+                    <button onclick="window.setMode('monitor')" class="w-full max-w-sm bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-emerald-500 transition-all">
+                        <i data-lucide="layout-grid" class="w-10 h-10 text-emerald-500"></i>
+                        <span class="font-black text-lg tracking-tight">VER MONITORES</span>
                     </button>
-                    <button onclick="window.setMode('camera')" class="w-full max-w-sm bg-slate-900 p-10 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-rose-500 transition-all">
-                        <i data-lucide="camera" class="w-12 h-12 text-rose-500"></i>
-                        <span class="font-black text-xl tracking-tight">ACTIVAR CÁMARA</span>
+                    <button onclick="window.setMode('camera')" class="w-full max-w-sm bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-rose-500 transition-all">
+                        <i data-lucide="camera" class="w-10 h-10 text-rose-500"></i>
+                        <span class="font-black text-lg tracking-tight">USAR COMO CÁMARA</span>
                     </button>
-                    <button onclick="window.logout()" class="mt-4 text-slate-600 text-xs font-bold hover:text-white uppercase tracking-widest">Cerrar Sesión</button>
+                    <button onclick="window.logout()" class="mt-4 text-slate-600 text-[10px] font-bold hover:text-white uppercase tracking-widest">Cambiar ID de Grupo</button>
                 </div>`;
             lucide.createIcons();
         }
@@ -95,19 +96,18 @@
         function renderCamera() {
             appDiv.innerHTML = `
                 <div class="min-h-screen bg-black flex flex-col relative overflow-hidden">
-                    <video id="v-preview" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover opacity-60"></video>
+                    <video id="v-preview" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover opacity-50"></video>
                     <div class="absolute inset-0 flex flex-col justify-between p-8">
                         <div class="flex justify-between items-center">
                             <div class="flex items-center gap-2 bg-rose-600 px-4 py-1.5 rounded-full live-indicator shadow-lg">
-                                <div class="w-2 h-2 bg-white rounded-full"></div>
-                                <span class="text-[10px] font-black uppercase tracking-tighter">Transmitiendo</span>
+                                <div class="w-1.5 h-1.5 bg-white rounded-full"></div>
+                                <span class="text-[9px] font-black uppercase">En Vivo</span>
                             </div>
-                            <span class="text-[10px] font-bold text-slate-400 bg-black/40 px-3 py-1 rounded-full border border-white/10 uppercase">${accountId}</span>
                         </div>
-                        <div class="flex flex-col items-center gap-6">
-                            <p class="text-white/60 text-[10px] font-bold uppercase tracking-widest text-center">Este dispositivo está enviando video al monitor central</p>
-                            <button onclick="window.stopCamera()" class="bg-white/10 p-8 rounded-full border border-white/20 backdrop-blur-xl hover:bg-rose-600/30 transition-all active:scale-90">
-                                <i data-lucide="power" class="text-white w-10 h-10"></i>
+                        <div class="flex flex-col items-center gap-4">
+                            <p class="text-white/40 text-[9px] font-bold uppercase tracking-widest">Transmitiendo cada 500ms (WebP)</p>
+                            <button onclick="window.stopCamera()" class="bg-white/10 p-6 rounded-full border border-white/20 backdrop-blur-md hover:bg-rose-600/20 transition-all">
+                                <i data-lucide="power" class="text-white w-8 h-8"></i>
                             </button>
                         </div>
                     </div>
@@ -119,17 +119,14 @@
         function renderMonitor() {
             appDiv.innerHTML = `
                 <div class="min-h-screen flex flex-col bg-slate-950">
-                    <header class="p-5 border-b border-slate-900 flex justify-between items-center bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
-                        <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-black font-black text-xs">CP</div>
-                            <h1 class="font-black text-sm tracking-tight">RED: ${accountId}</h1>
-                        </div>
-                        <button onclick="window.setMode(null)" class="bg-slate-800 text-[10px] font-bold px-4 py-2 rounded-full uppercase tracking-tighter border border-slate-700">Salir</button>
+                    <header class="p-4 border-b border-slate-900 flex justify-between items-center bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
+                        <h1 class="font-black text-xs tracking-tight text-slate-400">MONITOR: ${accountId}</h1>
+                        <button onclick="window.setMode(null)" class="bg-slate-800 text-[10px] font-bold px-4 py-2 rounded-full uppercase border border-slate-700">Atrás</button>
                     </header>
-                    <div id="camList" class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto w-full">
+                    <div id="camList" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-5xl mx-auto w-full">
                         <div class="col-span-full py-20 text-center opacity-20">
-                            <i data-lucide="scan-eye" class="w-12 h-12 mx-auto mb-4"></i>
-                            <p class="text-xs font-bold uppercase tracking-[0.3em]">Buscando transmisiones activas...</p>
+                            <i data-lucide="refresh-cw" class="w-8 h-8 mx-auto mb-4 animate-spin"></i>
+                            <p class="text-[10px] font-bold uppercase tracking-widest">Buscando cámaras...</p>
                         </div>
                     </div>
                 </div>`;
@@ -137,7 +134,7 @@
             startMonitoring();
         }
 
-        // --- LÓGICA DE BROADCAST (CÁMARA) ---
+        // --- LÓGICA DE EMISIÓN (webp / 500ms / 0.5 calidad) ---
         async function startBroadcasting() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -150,27 +147,26 @@
                 const canvas = document.getElementById('procCanvas');
                 const ctx = canvas.getContext('2d');
 
-                // Enviar fotograma cada 150ms para mayor fluidez (~6.6 fps)
                 streamInterval = setInterval(async () => {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    // Comprimido un poco más (0.3) para compensar la alta velocidad de envío
-                    const base64Frame = canvas.toDataURL('image/jpeg', 0.3); 
+                    
+                    // Ajustes solicitados: image/webp y calidad 0.5
+                    const base64Frame = canvas.toDataURL('image/webp', 0.5); 
 
                     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid), {
                         accountId,
                         frame: base64Frame,
                         lastSeen: serverTimestamp(),
-                        name: 'Cam-' + user.uid.substring(0,4).toUpperCase()
+                        name: 'CAM-' + user.uid.substring(0,4).toUpperCase()
                     });
-                }, 150); // Reducido de 800ms a 150ms
+                }, 500); // Intervalo de 500ms
 
             } catch (err) {
-                alert("Error al acceder a la cámara. Por favor permite el acceso.");
+                alert("Permiso de cámara denegado o error de hardware.");
                 window.setMode(null);
             }
         }
 
-        // --- LÓGICA DE MONITOR ---
         function startMonitoring() {
             const streamsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras');
             onSnapshot(streamsCol, (snapshot) => {
@@ -182,46 +178,33 @@
                     .filter(s => s.accountId === accountId);
 
                 if (activeStreams.length === 0) {
-                    list.innerHTML = `
-                        <div class="col-span-full py-20 text-center opacity-20">
-                            <i data-lucide="scan-eye" class="w-12 h-12 mx-auto mb-4"></i>
-                            <p class="text-xs font-bold uppercase tracking-[0.3em]">Buscando transmisiones activas...</p>
-                        </div>
-                    `;
-                    lucide.createIcons();
+                    list.innerHTML = `<div class="col-span-full py-20 text-center opacity-20 text-[10px] font-bold uppercase">Sin cámaras activas</div>`;
                     return;
                 }
 
                 list.innerHTML = activeStreams.map(s => `
-                    <div class="video-container shadow-2xl border border-slate-800 group">
-                        <img id="feed-${s.id}" src="${s.frame}" class="camera-feed" />
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                        <div class="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+                    <div class="video-container shadow-xl border border-slate-800">
+                        <img src="${s.frame}" class="camera-feed" />
+                        <div class="absolute top-3 left-3 flex items-center gap-2 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/5">
                             <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full live-indicator"></div>
-                            <span class="text-[10px] font-black uppercase tracking-tighter">${s.name}</span>
+                            <span class="text-[9px] font-bold uppercase">${s.name}</span>
                         </div>
                     </div>
                 `).join('');
-                lucide.createIcons();
             });
         }
 
-        // --- ACCIONES GLOBALES ---
+        // --- GLOBALES ---
         window.setAccount = () => {
             const input = document.getElementById('accInput').value.toUpperCase().trim();
             if (input.length >= 4) { accountId = input; render(); }
         };
-
         window.setMode = (m) => { mode = m; render(); };
-
         window.stopCamera = async () => {
             clearInterval(streamInterval);
-            if (user) {
-                await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid));
-            }
+            if (user) await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid));
             location.reload();
         };
-
         window.logout = () => { location.reload(); };
 
         // --- AUTH ---
@@ -233,7 +216,6 @@
                 render();
             }
         });
-
     </script>
 </body>
 </html>
