@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CamViewer Pro | Tiempo Real</title>
+    <title>CamViewer Pro | Transmisión Garantizada</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- PeerJS para WebRTC Directo -->
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { background-color: #020617; font-family: system-ui, -apple-system, sans-serif; }
         .live-indicator { animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        canvas { display: none; }
         .video-container { position: relative; background: #000; border-radius: 1.5rem; overflow: hidden; aspect-ratio: 16/9; }
-        video { width: 100%; height: 100%; object-fit: cover; background: #000; }
-        .mirror { transform: scaleX(-1); }
+        .camera-feed { width: 100%; height: 100%; object-fit: cover; }
     </style>
 </head>
 <body class="text-slate-100 min-h-screen">
@@ -25,10 +23,13 @@
         </div>
     </div>
 
+    <!-- Canvas oculto para procesar el video -->
+    <canvas id="procCanvas" width="480" height="360"></canvas>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBpbTRTUWomLgUqnL46nepKnXZQIPRimlI",
@@ -48,8 +49,7 @@
         let user = null;
         let accountId = "";
         let mode = null;
-        let peer = null;
-        let localStream = null;
+        let streamInterval = null;
 
         const appDiv = document.getElementById('app');
 
@@ -64,11 +64,11 @@
             appDiv.innerHTML = `
                 <div class="min-h-screen flex items-center justify-center p-6">
                     <div class="w-full max-w-sm bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
-                        <div class="flex justify-center mb-6 text-emerald-500"><i data-lucide="zap" class="w-16 h-16"></i></div>
-                        <h1 class="text-3xl font-black text-center mb-2 tracking-tight text-white">CAM-ULTRA</h1>
-                        <p class="text-slate-500 text-center mb-8 text-xs uppercase tracking-widest font-bold">Video en Tiempo Real</p>
+                        <div class="flex justify-center mb-6 text-emerald-500"><i data-lucide="shield-check" class="w-16 h-16"></i></div>
+                        <h1 class="text-3xl font-black text-center mb-2 tracking-tight text-white">CAM-FAST</h1>
+                        <p class="text-slate-500 text-center mb-8 text-xs uppercase tracking-widest font-bold">Transmisión Garantizada</p>
                         <input id="accInput" type="text" placeholder="ID GRUPO" class="w-full bg-black border border-slate-700 p-5 rounded-2xl mb-4 text-center text-2xl font-mono text-emerald-400 focus:border-emerald-500 outline-none uppercase">
-                        <button onclick="window.setAccount()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-5 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-lg shadow-emerald-900/20">CONECTAR</button>
+                        <button onclick="window.setAccount()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-5 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-lg">CONECTAR</button>
                     </div>
                 </div>`;
             lucide.createIcons();
@@ -78,13 +78,13 @@
             appDiv.innerHTML = `
                 <div class="min-h-screen flex flex-col items-center justify-center p-6 gap-4 text-center">
                     <p class="text-slate-500 text-[10px] font-bold tracking-[0.3em] uppercase mb-4">GRUPO: ${accountId}</p>
-                    <button onclick="window.setMode('monitor')" class="w-full max-w-sm bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-emerald-500 transition-all group">
-                        <i data-lucide="tv" class="w-10 h-10 text-emerald-500 group-hover:scale-110 transition-transform"></i>
-                        <span class="font-black text-lg tracking-tight">MODO MONITOR</span>
+                    <button onclick="window.setMode('monitor')" class="w-full max-w-sm bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-emerald-500 transition-all">
+                        <i data-lucide="layout-grid" class="w-10 h-10 text-emerald-500"></i>
+                        <span class="font-black text-lg tracking-tight">VER CÁMARAS</span>
                     </button>
-                    <button onclick="window.setMode('camera')" class="w-full max-w-sm bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-rose-500 transition-all group">
-                        <i data-lucide="video" class="w-10 h-10 text-rose-500 group-hover:scale-110 transition-transform"></i>
-                        <span class="font-black text-lg tracking-tight">MODO EMISOR</span>
+                    <button onclick="window.setMode('camera')" class="w-full max-w-sm bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 flex flex-col items-center gap-4 hover:border-rose-500 transition-all">
+                        <i data-lucide="video" class="w-10 h-10 text-rose-500"></i>
+                        <span class="font-black text-lg tracking-tight">MODO CÁMARA</span>
                     </button>
                     <button onclick="window.logout()" class="mt-8 text-slate-600 text-[10px] font-bold hover:text-white uppercase tracking-widest">Cerrar Sesión</button>
                 </div>`;
@@ -94,142 +94,122 @@
         function renderCamera() {
             appDiv.innerHTML = `
                 <div class="min-h-screen bg-black flex flex-col relative overflow-hidden">
-                    <video id="localVideo" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+                    <video id="v-preview" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover opacity-60"></video>
                     <div class="absolute inset-0 flex flex-col justify-between p-8 bg-gradient-to-b from-black/40 via-transparent to-black/60">
                         <div class="flex justify-between items-center">
                             <div class="flex items-center gap-2 bg-rose-600 px-4 py-1.5 rounded-full live-indicator shadow-lg">
                                 <div class="w-1.5 h-1.5 bg-white rounded-full"></div>
-                                <span class="text-[9px] font-black uppercase">Transmitiendo HD</span>
+                                <span class="text-[9px] font-black uppercase tracking-widest">Transmitiendo</span>
                             </div>
                         </div>
                         <div class="flex flex-col items-center gap-4">
-                            <p class="text-white/60 text-[10px] font-bold uppercase tracking-widest">Conexión Directa WebRTC Activa</p>
-                            <button onclick="window.stopEverything()" class="bg-white/10 p-6 rounded-full border border-white/20 backdrop-blur-md hover:bg-rose-600/40 transition-all active:scale-90">
+                            <button onclick="window.stopEverything()" class="bg-white/10 p-6 rounded-full border border-white/20 backdrop-blur-md hover:bg-rose-600/40 transition-all">
                                 <i data-lucide="power" class="text-white w-8 h-8"></i>
                             </button>
                         </div>
                     </div>
                 </div>`;
             lucide.createIcons();
-            initWebRTCAsCamera();
+            startBroadcasting();
         }
 
         function renderMonitor() {
             appDiv.innerHTML = `
                 <div class="min-h-screen flex flex-col bg-slate-950">
                     <header class="p-4 border-b border-slate-900 flex justify-between items-center bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
-                        <div class="flex items-center gap-2">
-                            <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                            <h1 class="font-black text-xs tracking-tight text-slate-300">CENTRO DE CONTROL: ${accountId}</h1>
-                        </div>
-                        <button onclick="window.stopEverything()" class="bg-slate-800 text-[10px] font-bold px-4 py-2 rounded-full uppercase border border-slate-700">Salir</button>
+                        <h1 class="font-black text-xs tracking-tight text-slate-400 uppercase">Monitor: ${accountId}</h1>
+                        <button onclick="window.setMode(null)" class="bg-slate-800 text-[10px] font-bold px-4 py-2 rounded-full uppercase border border-slate-700">Atrás</button>
                     </header>
-                    <div id="monitorGrid" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-6xl mx-auto w-full">
-                        <div class="col-span-full py-20 text-center opacity-30">
-                            <i data-lucide="search" class="w-8 h-8 mx-auto mb-4 animate-bounce"></i>
-                            <p class="text-[10px] font-bold uppercase tracking-widest">Esperando señal de cámaras...</p>
+                    <div id="camList" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-6xl mx-auto w-full">
+                        <div class="col-span-full py-20 text-center opacity-20">
+                            <i data-lucide="loader" class="w-8 h-8 mx-auto mb-4 animate-spin"></i>
+                            <p class="text-[10px] font-bold uppercase tracking-widest">Buscando señal...</p>
                         </div>
                     </div>
                 </div>`;
             lucide.createIcons();
-            initWebRTCAsMonitor();
+            startMonitoring();
         }
 
-        // --- LÓGICA WEBRTC (CÁMARA) ---
-        async function initWebRTCAsCamera() {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            document.getElementById('localVideo').srcObject = localStream;
-
-            // ID único para esta cámara
-            const peerId = `cam-${accountId}-${user.uid}`;
-            peer = new Peer(peerId);
-
-            peer.on('open', async (id) => {
-                // Registrar cámara en Firestore para que el monitor la encuentre
-                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'streams', user.uid), {
-                    accountId,
-                    peerId: id,
-                    name: 'Cámara ' + user.uid.substring(0, 3).toUpperCase(),
-                    active: true,
-                    lastSeen: serverTimestamp()
+        // --- LÓGICA DE ENVÍO DE FOTOS OPTIMIZADO ---
+        async function startBroadcasting() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment', width: { ideal: 640 } }, 
+                    audio: false 
                 });
-            });
+                const video = document.getElementById('v-preview');
+                video.srcObject = stream;
 
-            // Si el monitor llama, enviamos el video
-            peer.on('call', (call) => {
-                call.answer(localStream);
-            });
+                const canvas = document.getElementById('procCanvas');
+                const ctx = canvas.getContext('2d');
+
+                // Intervalo de 150ms para fluidez máxima sin bloqueos
+                streamInterval = setInterval(async () => {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    // WebP al 0.3 de calidad es EXTREMADAMENTE ligero y rápido
+                    const imgData = canvas.toDataURL('image/webp', 0.3);
+
+                    try {
+                        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'streams', user.uid), {
+                            accountId,
+                            frame: imgData,
+                            lastSeen: serverTimestamp(),
+                            name: 'CAM-' + user.uid.substring(0,3).toUpperCase()
+                        });
+                    } catch (e) {
+                        console.error("Error al subir frame");
+                    }
+                }, 150);
+
+            } catch (err) {
+                alert("Error: " + err.message);
+                window.setMode(null);
+            }
         }
 
-        // --- LÓGICA WEBRTC (MONITOR) ---
-        function initWebRTCAsMonitor() {
-            const peerId = `mon-${accountId}-${user.uid}`;
-            peer = new Peer(peerId);
-
+        function startMonitoring() {
             const streamsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'streams');
-            const activeCalls = new Set();
-
             onSnapshot(streamsCol, (snapshot) => {
-                const grid = document.getElementById('monitorGrid');
-                if (!grid) return;
+                const list = document.getElementById('camList');
+                if (!list) return;
 
-                const cameras = snapshot.docs
+                const activeStreams = snapshot.docs
                     .map(d => d.data())
-                    .filter(c => c.accountId === accountId && c.active);
+                    .filter(s => s.accountId === accountId);
 
-                if (cameras.length === 0) {
-                    grid.innerHTML = `<div class="col-span-full py-20 text-center opacity-20 font-bold uppercase text-xs">No hay cámaras en línea</div>`;
+                if (activeStreams.length === 0) {
+                    list.innerHTML = `<div class="col-span-full py-20 text-center opacity-20 text-[10px] font-bold uppercase">Sin cámaras activas</div>`;
                     return;
                 }
 
-                cameras.forEach(cam => {
-                    if (!activeCalls.has(cam.peerId)) {
-                        activeCalls.add(cam.peerId);
-                        
-                        // Crear contenedor de video
-                        const container = document.createElement('div');
-                        container.className = "video-container shadow-2xl border border-white/5 group";
-                        container.innerHTML = `
-                            <video id="video-${cam.peerId}" autoplay playsinline class="bg-black"></video>
-                            <div class="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                                <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full live-indicator"></div>
-                                <span class="text-[10px] font-black uppercase tracking-tighter">${cam.name}</span>
-                            </div>
-                        `;
-                        
-                        if (grid.querySelector('.opacity-30')) grid.innerHTML = '';
-                        grid.appendChild(container);
-
-                        // Llamar a la cámara
-                        const call = peer.call(cam.peerId, new MediaStream());
-                        call.on('stream', (remoteStream) => {
-                            const v = document.getElementById(`video-${cam.peerId}`);
-                            if (v) v.srcObject = remoteStream;
-                        });
-                        
-                        call.on('error', () => activeCalls.delete(cam.peerId));
-                    }
-                });
+                list.innerHTML = activeStreams.map(s => `
+                    <div class="video-container shadow-2xl border border-white/5">
+                        <img src="${s.frame}" class="camera-feed" />
+                        <div class="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+                            <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full live-indicator"></div>
+                            <span class="text-[10px] font-black uppercase tracking-tighter">${s.name}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }, (error) => {
+                console.error("Error en monitor:", error);
             });
         }
 
         // --- UTILIDADES ---
         window.setAccount = () => {
-            const val = document.getElementById('accInput').value.toUpperCase().trim();
-            if (val.length >= 4) { accountId = val; render(); }
+            const input = document.getElementById('accInput').value.toUpperCase().trim();
+            if (input.length >= 4) { accountId = input; render(); }
         };
-
         window.setMode = (m) => { mode = m; render(); };
-
         window.stopEverything = async () => {
-            if (localStream) localStream.getTracks().forEach(t => t.stop());
-            if (peer) peer.destroy();
+            clearInterval(streamInterval);
             if (user && mode === 'camera') {
                 await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'streams', user.uid));
             }
             location.reload();
         };
-
         window.logout = () => { location.reload(); };
 
         onAuthStateChanged(auth, (u) => {
