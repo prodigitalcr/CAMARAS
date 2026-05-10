@@ -1,0 +1,282 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { Camera, MonitorSmartphone, Shield, Power, Video, Signal, AlertCircle, Smartphone, Lock } from 'lucide-react';
+
+// --- CONFIGURACIÓN DE FIREBASE ACTUALIZADA ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBpbTRTUWomLgUqnL46nepKnXZQIPRimlI",
+  authDomain: "camaras-757d8.firebaseapp.com",
+  projectId: "camaras-757d8",
+  storageBucket: "camaras-757d8.firebasestorage.app",
+  messagingSenderId: "370746294800",
+  appId: "1:370746294800:web:77034554f64eee02aa8095",
+  measurementId: "G-491P4P2FD1"
+};
+
+// Inicialización de servicios
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Este ID debe coincidir con la ruta definida en tus Reglas de Firestore
+const customAppId = "camaras-prod-757d8"; 
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [accountId, setAccountId] = useState('');
+  const [joinedAccount, setJoinedAccount] = useState(false);
+  const [mode, setMode] = useState(null); // 'viewer' | 'camera'
+  const [cameras, setCameras] = useState([]);
+  const [cameraName, setCameraName] = useState('Cámara Móvil');
+  
+  const localVideoRef = useRef(null);
+  const localStreamRef = useRef(null);
+
+  // Autenticación Anónima para cumplir con las Reglas de Seguridad
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        await signInAnonymously(auth);
+      } catch (error) {
+        console.error("Error de autenticación:", error);
+      }
+    };
+
+    initAuth();
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Escucha de cámaras activas (Modo Visualizador)
+  useEffect(() => {
+    if (!user || !joinedAccount || mode !== 'viewer') return;
+
+    // Referencia a la colección según la ruta de tus reglas
+    const camerasRef = collection(db, 'artifacts', customAppId, 'public', 'data', 'cameras');
+    
+    const unsubscribe = onSnapshot(camerasRef, (snapshot) => {
+      const allCameras = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Filtramos por el código de cuenta manual (ej: CASA1)
+      const accountCameras = allCameras.filter(cam => cam.accountId === accountId);
+      setCameras(accountCameras.slice(0, 5)); 
+    }, (error) => {
+      console.error("Error de Firestore (Verifica las reglas):", error);
+    });
+
+    return () => unsubscribe();
+  }, [user, joinedAccount, mode, accountId]);
+
+  // Gestión del Stream de Video (Modo Cámara)
+  useEffect(() => {
+    if (!user || !joinedAccount || mode !== 'camera') return;
+
+    let isComponentMounted = true;
+
+    const startCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' },
+          audio: false 
+        });
+
+        if (isComponentMounted) {
+          localStreamRef.current = stream;
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+          }
+
+          // Registramos la cámara en Firestore
+          const cameraDocRef = doc(db, 'artifacts', customAppId, 'public', 'data', 'cameras', user.uid);
+          await setDoc(cameraDocRef, {
+            accountId: accountId,
+            name: cameraName,
+            status: 'online',
+            lastUpdate: serverTimestamp()
+          });
+        }
+      } catch (err) {
+        console.error("Error al acceder a la cámara:", err);
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      isComponentMounted = false;
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      // Eliminamos el registro al desconectar
+      const removeCamera = async () => {
+        try {
+          const cameraDocRef = doc(db, 'artifacts', customAppId, 'public', 'data', 'cameras', user.uid);
+          await deleteDoc(cameraDocRef);
+        } catch (e) {
+          console.error("Error al eliminar registro:", e);
+        }
+      };
+      removeCamera();
+    };
+  }, [user, joinedAccount, mode, accountId, cameraName]);
+
+  const handleJoinAccount = (e) => {
+    e.preventDefault();
+    if (accountId.trim().length >= 4) {
+      setJoinedAccount(true);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-emerald-500"></div>
+      </div>
+    );
+  }
+
+  // Pantalla de Ingreso de Código
+  if (!joinedAccount) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md bg-slate-900 rounded-2xl p-8 border border-slate-800 shadow-2xl">
+          <div className="flex justify-center mb-6">
+            <Shield className="w-12 h-12 text-emerald-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-center mb-2">CamViewer Pro</h1>
+          <p className="text-slate-400 text-center mb-8 text-sm">Ingresa el código para enlazar tus dispositivos.</p>
+          
+          <form onSubmit={handleJoinAccount} className="space-y-4">
+            <input
+              type="text"
+              required
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value.toUpperCase())}
+              className="w-full bg-black border border-slate-700 rounded-lg py-3 px-4 text-center text-xl tracking-widest focus:ring-2 focus:ring-emerald-500 outline-none"
+              placeholder="CÓDIGO RED"
+            />
+            <button className="w-full bg-emerald-600 hover:bg-emerald-500 py-3 rounded-lg font-bold transition-colors">
+              CONECTAR
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Pantalla de Selección de Modo
+  if (!mode) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-4">
+          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 text-center mb-4">
+            <p className="text-slate-500 text-xs uppercase tracking-tighter">ID de Red Activa</p>
+            <p className="text-emerald-400 font-mono font-bold text-lg">{accountId}</p>
+          </div>
+
+          <button onClick={() => setMode('viewer')} className="w-full bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center gap-4 hover:border-emerald-500 transition-all group">
+            <MonitorSmartphone className="w-10 h-10 text-emerald-500 group-hover:scale-110 transition-transform" />
+            <div className="text-left">
+              <p className="font-bold">Visualizador Maestro</p>
+              <p className="text-xs text-slate-400">Ver todas las cámaras conectadas.</p>
+            </div>
+          </button>
+
+          <button onClick={() => setMode('camera')} className="w-full bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center gap-4 hover:border-rose-500 transition-all group">
+            <Camera className="w-10 h-10 text-rose-500 group-hover:scale-110 transition-transform" />
+            <div className="text-left">
+              <p className="font-bold">Dispositivo Cámara</p>
+              <p className="text-xs text-slate-400">Transmitir video desde este celular.</p>
+            </div>
+          </button>
+          
+          <button onClick={() => setJoinedAccount(false)} className="w-full py-2 text-slate-500 text-sm hover:text-white transition-colors">
+            Cambiar Código de Red
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Interfaz Modo Cámara
+  if (mode === 'camera') {
+    return (
+      <div className="min-h-screen bg-black relative flex flex-col items-center justify-center">
+        <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover absolute inset-0 opacity-70" />
+        <div className="z-10 text-center pointer-events-none">
+          <div className="w-20 h-20 rounded-full border-4 border-rose-600 animate-pulse flex items-center justify-center mb-4 mx-auto">
+            <div className="w-14 h-14 bg-rose-600 rounded-full"></div>
+          </div>
+          <h2 className="text-white font-bold text-xl uppercase tracking-widest shadow-lg">Transmitiendo</h2>
+          <div className="bg-black/50 px-4 py-1 rounded-full mt-4 border border-white/10">
+            <p className="text-emerald-400 text-sm font-mono tracking-tighter">RED: {accountId}</p>
+          </div>
+        </div>
+        <button onClick={() => setMode(null)} className="absolute bottom-10 bg-white/10 p-4 rounded-full backdrop-blur-md hover:bg-white/20 transition-colors">
+          <Power className="text-white w-6 h-6" />
+        </button>
+      </div>
+    );
+  }
+
+  // Interfaz Modo Visualizador
+  return (
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      <header className="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center sticky top-0 z-20">
+        <div className="flex items-center gap-3">
+          <div className="bg-emerald-500/20 p-2 rounded-lg">
+            <Shield className="w-5 h-5 text-emerald-500" />
+          </div>
+          <div>
+            <h1 className="font-bold text-sm leading-none">Centro de Control</h1>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Red: {accountId}</p>
+          </div>
+        </div>
+        <button onClick={() => setMode(null)} className="text-xs bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg transition-colors border border-slate-700">
+          Cerrar Panel
+        </button>
+      </header>
+
+      <main className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[...Array(5)].map((_, i) => {
+          const cam = cameras[i];
+          return (
+            <div key={i} className="aspect-video bg-slate-900 rounded-2xl border border-slate-800 flex flex-col items-center justify-center relative overflow-hidden group shadow-lg">
+              {cam ? (
+                <>
+                  <div className="absolute inset-0 bg-emerald-500/5 animate-pulse"></div>
+                  <Video className="w-12 h-12 text-emerald-500/20 mb-2" />
+                  <p className="text-emerald-400 font-bold text-sm uppercase tracking-wider">{cam.name}</p>
+                  <p className="text-[10px] text-slate-500 font-mono mt-1">ID: {cam.id.substring(0, 8)}</p>
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 px-2 py-1 rounded-full border border-emerald-500/30 text-[9px] font-bold">
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
+                    VIVO
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center opacity-20">
+                  <AlertCircle className="w-8 h-8 mb-2" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest">Ranura {i+1} Disponible</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </main>
+      
+      {cameras.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 opacity-40">
+          <Signal className="w-16 h-16 mb-4" />
+          <p className="text-center text-sm max-w-xs">Esperando a que otros dispositivos se conecten a la red <span className="font-bold text-emerald-400">{accountId}</span>...</p>
+        </div>
+      )}
+    </div>
+  );
+}
