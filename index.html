@@ -4,32 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CamViewer Pro - Sistema de Monitoreo</title>
-    <!-- Tailwind para diseño profesional instantáneo -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide para Iconos -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         .video-overlay { background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%); }
         .recording-dot { animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        video { background: #000; object-fit: cover; width: 100%; height: 100%; border-radius: 1rem; }
+        .cam-card { transition: all 0.3s ease; }
+        .cam-card:hover { transform: translateY(-2px); border-color: rgba(16, 185, 129, 0.5); }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
 
     <div id="app">
-        <!-- El contenido se genera dinámicamente aquí -->
+        <!-- Pantalla de Carga Inicial -->
         <div class="flex items-center justify-center min-h-screen">
-            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-emerald-500"></div>
+            <div class="flex flex-col items-center gap-4">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-emerald-500"></div>
+                <p class="text-slate-500 text-sm animate-pulse">Iniciando sistema seguro...</p>
+            </div>
         </div>
     </div>
 
     <script type="module">
-        // Importación de módulos de Firebase desde CDN
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc, serverTimestamp, addDoc, query, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // TUS CREDENCIALES CONFIGURADAS
+        // CONFIGURACIÓN DE FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyBpbTRTUWomLgUqnL46nepKnXZQIPRimlI",
             authDomain: "camaras-757d8.firebaseapp.com",
@@ -42,34 +45,23 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const APP_COLLECTION_ID = "camaras-757d8"; // Vinculado a tus reglas
+        const APP_ID = "camaras-757d8";
 
         let currentUser = null;
         let accountId = "";
-        let mode = null; // 'viewer' | 'camera'
+        let mode = null;
         let activeStream = null;
+        let peerConnections = {};
 
+        const iceServers = { iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }] };
         const appDiv = document.getElementById('app');
 
-        // Función para cambiar de "pantalla"
+        // --- NAVEGACIÓN ---
         function navigate() {
-            if (!currentUser) {
-                renderLoading();
-                return;
-            }
-            if (!accountId) {
-                renderLogin();
-                return;
-            }
-            if (!mode) {
-                renderModeSelection();
-                return;
-            }
-            if (mode === 'camera') {
-                renderCameraMode();
-            } else {
-                renderViewerMode();
-            }
+            if (!currentUser) return renderLoading();
+            if (!accountId) return renderLogin();
+            if (!mode) return renderModeSelection();
+            mode === 'camera' ? renderCameraMode() : renderViewerMode();
         }
 
         function renderLoading() {
@@ -81,10 +73,10 @@
                 <div class="min-h-screen flex items-center justify-center p-4">
                     <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 w-full max-w-md shadow-2xl">
                         <div class="flex justify-center mb-6 text-emerald-500"><i data-lucide="shield" class="w-16 h-16"></i></div>
-                        <h1 class="text-3xl font-bold text-center mb-2 text-white">CamViewer Pro</h1>
-                        <p class="text-slate-400 text-center mb-8 text-sm">Ingresa un código para tu grupo de cámaras</p>
-                        <input id="accInput" type="text" placeholder="CÓDIGO DE CUENTA" class="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl mb-4 text-center text-2xl font-bold tracking-widest text-emerald-400 outline-none focus:border-emerald-500 transition-all uppercase">
-                        <button onclick="window.join()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-4 rounded-xl font-bold text-lg shadow-lg shadow-emerald-900/20 transition-all">ACCEDER</button>
+                        <h1 class="text-3xl font-bold text-center mb-2 text-white tracking-tight">CamViewer Pro</h1>
+                        <p class="text-slate-400 text-center mb-8 text-sm">Control de Seguridad Residencial</p>
+                        <input id="accInput" type="text" placeholder="CÓDIGO DE RED" class="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl mb-4 text-center text-2xl font-bold tracking-[0.3em] text-emerald-400 outline-none uppercase focus:border-emerald-500 transition-all">
+                        <button onclick="window.join()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-4 rounded-xl font-bold text-lg shadow-lg shadow-emerald-900/20 transition-all active:scale-95">ACCEDER AL PANEL</button>
                     </div>
                 </div>`;
             lucide.createIcons();
@@ -94,24 +86,20 @@
             appDiv.innerHTML = `
                 <div class="min-h-screen flex flex-col items-center justify-center p-6 gap-6">
                     <div class="text-center mb-4">
-                        <p class="text-slate-500 text-xs uppercase font-bold tracking-widest">Cuenta Activa</p>
-                        <h2 class="text-2xl font-mono text-emerald-400 font-bold">${accountId}</h2>
+                        <p class="text-slate-500 text-xs uppercase font-bold tracking-widest mb-1">Terminal de Red</p>
+                        <h2 class="text-3xl font-mono text-emerald-400 font-bold">${accountId}</h2>
                     </div>
-                    <button onclick="window.setMode('viewer')" class="w-full max-w-sm bg-slate-900 p-8 rounded-3xl border border-slate-800 hover:border-emerald-500 transition-all flex items-center gap-6 group">
-                        <div class="bg-emerald-500/10 p-4 rounded-2xl group-hover:scale-110 transition-transform"><i data-lucide="monitor-smartphone" class="text-emerald-500 w-10 h-10"></i></div>
-                        <div class="text-left">
-                            <p class="font-bold text-xl text-white">Visualizador</p>
-                            <p class="text-sm text-slate-400">Ver cámaras de esta cuenta</p>
-                        </div>
-                    </button>
-                    <button onclick="window.setMode('camera')" class="w-full max-w-sm bg-slate-900 p-8 rounded-3xl border border-slate-800 hover:border-rose-500 transition-all flex items-center gap-6 group">
-                        <div class="bg-rose-500/10 p-4 rounded-2xl group-hover:scale-110 transition-transform"><i data-lucide="camera" class="text-rose-500 w-10 h-10"></i></div>
-                        <div class="text-left">
-                            <p class="font-bold text-xl text-white">Modo Cámara</p>
-                            <p class="text-sm text-slate-400">Usar este móvil como cámara</p>
-                        </div>
-                    </button>
-                    <button onclick="window.logout()" class="mt-4 text-slate-500 hover:text-white transition-colors">Cambiar Código</button>
+                    <div class="grid grid-cols-1 gap-4 w-full max-w-sm">
+                        <button onclick="window.setMode('viewer')" class="bg-slate-900 p-8 rounded-3xl border border-slate-800 hover:border-emerald-500 transition-all flex items-center gap-6 group">
+                            <div class="bg-emerald-500/10 p-4 rounded-2xl group-hover:scale-110 transition-transform"><i data-lucide="monitor-smartphone" class="text-emerald-500 w-10 h-10"></i></div>
+                            <div class="text-left"><p class="font-bold text-xl text-white">Visualizador</p><p class="text-xs text-slate-500">Monitor Maestro</p></div>
+                        </button>
+                        <button onclick="window.setMode('camera')" class="bg-slate-900 p-8 rounded-3xl border border-slate-800 hover:border-rose-500 transition-all flex items-center gap-6 group">
+                            <div class="bg-rose-500/10 p-4 rounded-2xl group-hover:scale-110 transition-transform"><i data-lucide="camera" class="text-rose-500 w-10 h-10"></i></div>
+                            <div class="text-left"><p class="font-bold text-xl text-white">Transmisor</p><p class="text-xs text-slate-500">Modo Cámara</p></div>
+                        </button>
+                    </div>
+                    <button onclick="window.logout()" class="mt-8 text-slate-500 hover:text-rose-400 transition-colors flex items-center gap-2 text-sm"><i data-lucide="log-out" class="w-4 h-4"></i> Desconectar Red</button>
                 </div>`;
             lucide.createIcons();
         }
@@ -119,20 +107,18 @@
         function renderCameraMode() {
             appDiv.innerHTML = `
                 <div class="min-h-screen bg-black flex flex-col relative overflow-hidden">
-                    <video id="cameraPreview" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover opacity-80"></video>
+                    <video id="localVideo" autoplay playsinline muted class="w-full h-full"></video>
                     <div class="absolute inset-0 video-overlay p-8 flex flex-col justify-between">
                         <div class="flex justify-between items-center">
-                            <div class="flex items-center gap-2">
-                                <div class="w-3 h-3 bg-rose-600 rounded-full recording-dot"></div>
-                                <span class="text-rose-600 font-bold tracking-widest text-sm">EN VIVO</span>
+                            <div class="flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+                                <div class="w-3 h-3 bg-rose-600 rounded-full recording-dot shadow-[0_0_10px_rgba(225,29,72,0.8)]"></div>
+                                <span class="text-white font-bold text-xs tracking-widest">TRANSMITIENDO EN VIVO</span>
                             </div>
-                            <div class="bg-black/40 px-3 py-1 rounded-full border border-white/10 text-xs font-mono">RED: ${accountId}</div>
                         </div>
-                        <div class="text-center">
-                            <button onclick="window.exitMode()" class="bg-white/10 p-6 rounded-full backdrop-blur-xl border border-white/20 hover:bg-rose-600/20 transition-all">
-                                <i data-lucide="power" class="text-white w-8 h-8"></i>
+                        <div class="flex justify-center pb-10">
+                            <button onclick="window.exitMode()" class="bg-white/10 p-8 rounded-full backdrop-blur-2xl border border-white/20 hover:bg-rose-600/40 transition-all shadow-2xl active:scale-90">
+                                <i data-lucide="power" class="text-white w-10 h-10"></i>
                             </button>
-                            <p class="mt-4 text-slate-300 text-sm font-medium">Transmitiendo a la cuenta maestra</p>
                         </div>
                     </div>
                 </div>`;
@@ -143,112 +129,144 @@
         function renderViewerMode() {
             appDiv.innerHTML = `
                 <div class="min-h-screen flex flex-col">
-                    <header class="p-4 bg-slate-900/50 border-b border-slate-800 backdrop-blur-md flex justify-between items-center sticky top-0 z-10">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="shield" class="text-emerald-500 w-5 h-5"></i>
-                            <h1 class="font-bold">Monitor: ${accountId}</h1>
+                    <header class="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center sticky top-0 z-50 backdrop-blur-xl bg-opacity-80">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-emerald-500/20 p-2 rounded-lg"><i data-lucide="shield" class="text-emerald-500 w-5 h-5"></i></div>
+                            <div>
+                                <h1 class="font-bold text-sm leading-tight">RED: ${accountId}</h1>
+                                <p class="text-[10px] text-emerald-500 font-bold uppercase">Sistema Activo</p>
+                            </div>
                         </div>
-                        <button onclick="window.exitMode()" class="text-xs bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">Cerrar</button>
+                        <button onclick="window.exitMode()" class="text-[10px] font-bold bg-slate-800 hover:bg-rose-900/20 hover:text-rose-400 px-4 py-2 rounded-full border border-slate-700 transition-all">SALIR DEL PANEL</button>
                     </header>
-                    <main id="cameraGrid" class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <!-- Aquí se inyectan las cámaras en tiempo real -->
-                    </main>
+                    <main id="cameraGrid" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto w-full"></main>
                 </div>`;
             lucide.createIcons();
             listenToCameras();
         }
 
-        // --- FUNCIONES DE LÓGICA ---
-
-        window.join = () => {
-            accountId = document.getElementById('accInput').value.toUpperCase();
-            if(accountId.length >= 4) navigate();
-        };
-
-        window.setMode = (m) => {
-            mode = m;
-            navigate();
-        };
-
-        window.exitMode = () => {
-            if(activeStream) activeStream.getTracks().forEach(t => t.stop());
-            mode = null;
-            navigate();
-        };
-
-        window.logout = () => {
-            accountId = "";
-            mode = null;
-            navigate();
-        };
+        // --- LÓGICA WEB RTC (P2P) ---
 
         async function startCameraStream() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' },
-                    audio: false 
-                });
-                activeStream = stream;
-                document.getElementById('cameraPreview').srcObject = stream;
+                activeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+                document.getElementById('localVideo').srcObject = activeStream;
                 
-                // Registro en Firebase
-                const camDoc = doc(db, 'artifacts', APP_COLLECTION_ID, 'public', 'data', 'cameras', currentUser.uid);
-                await setDoc(camDoc, {
-                    accountId: accountId,
-                    name: 'Cámara ' + currentUser.uid.substring(0,4),
-                    online: true,
-                    timestamp: serverTimestamp()
+                const camRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', currentUser.uid);
+                await setDoc(camRef, { accountId, name: 'Cam-' + currentUser.uid.substring(0,4).toUpperCase(), online: true, lastUpdate: serverTimestamp() });
+
+                // Escuchar solicitudes de conexión
+                const offersCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calls');
+                onSnapshot(offersCol, async (snapshot) => {
+                    snapshot.docChanges().forEach(async (change) => {
+                        if (change.type === "added") {
+                            const data = change.doc.data();
+                            if (data.target === currentUser.uid && data.type === 'offer') {
+                                handleOffer(data, change.doc.id);
+                            }
+                        }
+                    });
                 });
-            } catch (e) {
-                alert("Error al acceder a la cámara. Revisa los permisos.");
-                window.exitMode();
-            }
+            } catch (e) { alert("Error al activar cámara: " + e.message); }
+        }
+
+        async function handleOffer(data, callId) {
+            const pc = new RTCPeerConnection(iceServers);
+            activeStream.getTracks().forEach(track => pc.addTrack(track, activeStream));
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', `calls/${callId}/candidates`), event.candidate.toJSON());
+                }
+            };
+
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calls', callId), { answer: { type: answer.type, sdp: answer.sdp }, status: 'answered' }, { merge: true });
         }
 
         function listenToCameras() {
-            const camCol = collection(db, 'artifacts', APP_COLLECTION_ID, 'public', 'data', 'cameras');
+            const camCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras');
             onSnapshot(camCol, (snap) => {
                 const grid = document.getElementById('cameraGrid');
                 if(!grid) return;
-
-                const cams = snap.docs.map(d => ({id: d.id, ...d.data()}))
-                                .filter(c => c.accountId === accountId);
-
-                let html = "";
-                // Renderizar hasta 5 ranuras
-                for(let i=0; i<5; i++) {
-                    const c = cams[i];
-                    if(c) {
-                        html += `
-                        <div class="aspect-video bg-slate-900 rounded-2xl border border-emerald-500/50 relative overflow-hidden flex flex-col items-center justify-center shadow-lg shadow-emerald-950/20">
-                            <div class="absolute inset-0 bg-emerald-500/5 animate-pulse"></div>
-                            <i data-lucide="video" class="text-emerald-500/40 w-12 h-12 mb-2"></i>
-                            <p class="font-bold text-emerald-400 text-sm tracking-widest">${c.name.toUpperCase()}</p>
-                            <div class="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 px-2 py-1 rounded-full border border-emerald-500/30 text-[9px] font-bold">
-                                <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div> VIVO
-                            </div>
-                        </div>`;
-                    } else {
-                        html += `
-                        <div class="aspect-video bg-slate-900/30 rounded-2xl border border-slate-800 flex flex-col items-center justify-center text-slate-700">
-                            <i data-lucide="video-off" class="w-8 h-8 mb-2 opacity-20"></i>
-                            <span class="text-[10px] font-bold uppercase tracking-tighter opacity-30">Ranura ${i+1} Disponible</span>
-                        </div>`;
-                    }
-                }
-                grid.innerHTML = html;
+                const cams = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(c => c.accountId === accountId);
+                
+                // Solo reconstruir si el número de cámaras cambió para evitar parpadeos
+                grid.innerHTML = cams.map(c => `
+                    <div class="cam-card bg-slate-900 rounded-3xl overflow-hidden relative border border-slate-800 shadow-xl aspect-video">
+                        <video id="video-${c.id}" autoplay playsinline class="w-full h-full object-cover"></video>
+                        <div class="absolute inset-0 pointer-events-none border-t border-white/5"></div>
+                        <div class="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-bold text-emerald-400 border border-emerald-500/20 flex items-center gap-2">
+                             <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div> ${c.name}
+                        </div>
+                    </div>
+                `).join('') || '<div class="col-span-full text-center py-24 opacity-20 flex flex-col items-center"><i data-lucide="signal-low" class="w-12 h-12 mb-4"></i><p class="font-bold tracking-widest text-sm uppercase">Sincronizando con cámaras...</p></div>';
+                
                 lucide.createIcons();
+                cams.forEach(c => { if(c.id !== currentUser.uid) connectToCamera(c.id); });
             });
         }
 
-        // Inicializar Autenticación
-        onAuthStateChanged(auth, (u) => {
-            currentUser = u;
-            if(!u) {
-                signInAnonymously(auth);
+        async function connectToCamera(camId) {
+            if (peerConnections[camId]) return;
+            const pc = new RTCPeerConnection(iceServers);
+            peerConnections[camId] = pc;
+
+            pc.ontrack = (event) => {
+                const videoEl = document.getElementById(`video-${camId}`);
+                if (videoEl) videoEl.srcObject = event.streams[0];
+            };
+
+            // Crear "llamada" de señalización
+            const callRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calls'), {
+                sender: currentUser.uid,
+                target: camId,
+                type: 'offer',
+                offer: null,
+                timestamp: serverTimestamp()
+            });
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', `calls/${callRef.id}/candidates`), event.candidate.toJSON());
+                }
+            };
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await setDoc(callRef, { offer: { type: offer.type, sdp: offer.sdp } }, { merge: true });
+
+            onSnapshot(callRef, (doc) => {
+                const data = doc.data();
+                if (data?.answer && pc.signalingState !== "stable") {
+                    pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                }
+            });
+
+            onSnapshot(collection(db, 'artifacts', APP_ID, 'public', 'data', `calls/${callRef.id}/candidates`), (snap) => {
+                snap.docChanges().forEach(change => {
+                    if (change.type === "added") pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+                });
+            });
+        }
+
+        // --- FUNCIONES GLOBALES ---
+        window.join = () => { accountId = document.getElementById('accInput').value.toUpperCase().trim(); if(accountId.length >= 4) navigate(); };
+        window.setMode = (m) => { mode = m; navigate(); };
+        window.exitMode = async () => {
+            if (mode === 'camera') {
+                try {
+                    await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', currentUser.uid));
+                } catch(e) {}
             }
-            navigate();
-        });
+            location.reload(); 
+        };
+        window.logout = () => { accountId = ""; mode = null; navigate(); };
+
+        onAuthStateChanged(auth, (u) => { currentUser = u; if(!u) signInAnonymously(auth); navigate(); });
 
     </script>
 </body>
