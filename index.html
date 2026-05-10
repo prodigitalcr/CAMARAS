@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CamViewer Pro | Calidad Balanceada</title>
+    <title>CamViewer Pro | Máxima Fluidez</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -68,7 +68,7 @@
                     <div class="w-full max-w-sm bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
                         <div class="flex justify-center mb-6 text-emerald-500"><i data-lucide="shield-check" class="w-16 h-16"></i></div>
                         <h1 class="text-3xl font-black text-center mb-2 tracking-tight text-white">CAM-PRO</h1>
-                        <p class="text-slate-500 text-center mb-8 text-xs uppercase tracking-widest font-bold">Modo Balanceado</p>
+                        <p class="text-slate-500 text-center mb-8 text-xs uppercase tracking-widest font-bold">Modo Máxima Fluidez</p>
                         <input id="accInput" type="text" placeholder="ID GRUPO" class="w-full bg-black border border-slate-700 p-5 rounded-2xl mb-4 text-center text-2xl font-mono text-emerald-400 focus:border-emerald-500 outline-none uppercase">
                         <button onclick="window.setAccount()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-5 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-lg shadow-emerald-900/20">ACCEDER</button>
                     </div>
@@ -105,7 +105,7 @@
                             </div>
                         </div>
                         <div class="flex flex-col items-center gap-4">
-                            <p class="text-white/40 text-[9px] font-bold uppercase tracking-widest">Transmitiendo cada 500ms (WebP)</p>
+                            <p class="text-white/40 text-[9px] font-bold uppercase tracking-widest">FPS OPTIMIZADOS (200ms)</p>
                             <button onclick="window.stopCamera()" class="bg-white/10 p-6 rounded-full border border-white/20 backdrop-blur-md hover:bg-rose-600/20 transition-all">
                                 <i data-lucide="power" class="text-white w-8 h-8"></i>
                             </button>
@@ -134,7 +134,7 @@
             startMonitoring();
         }
 
-        // --- LÓGICA DE EMISIÓN (webp / 500ms / 0.5 calidad) ---
+        // --- LÓGICA DE EMISIÓN OPTIMIZADA (200ms / Calidad 0.4 / WebP) ---
         async function startBroadcasting() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -147,11 +147,12 @@
                 const canvas = document.getElementById('procCanvas');
                 const ctx = canvas.getContext('2d');
 
+                // 200ms es la velocidad máxima recomendada para evitar saturación de red
                 streamInterval = setInterval(async () => {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                     
-                    // Ajustes solicitados: image/webp y calidad 0.5
-                    const base64Frame = canvas.toDataURL('image/webp', 0.5); 
+                    // WebP a 0.4 es el equilibrio perfecto entre peso y claridad
+                    const base64Frame = canvas.toDataURL('image/webp', 0.4); 
 
                     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid), {
                         accountId,
@@ -159,10 +160,10 @@
                         lastSeen: serverTimestamp(),
                         name: 'CAM-' + user.uid.substring(0,4).toUpperCase()
                     });
-                }, 500); // Intervalo de 500ms
+                }, 200); 
 
             } catch (err) {
-                alert("Permiso de cámara denegado o error de hardware.");
+                alert("Error al iniciar cámara.");
                 window.setMode(null);
             }
         }
