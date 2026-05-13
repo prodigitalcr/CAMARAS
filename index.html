@@ -7,60 +7,46 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        :root { --glass-bg: rgba(15, 23, 42, 0.75); --glass-border: rgba(255, 255, 255, 0.12); }
+        :root { --glass-bg: rgba(15, 23, 42, 0.7); --glass-border: rgba(255, 255, 255, 0.1); }
         body { background-color: #020617; font-family: system-ui, -apple-system, sans-serif; overflow-x: hidden; touch-action: manipulation; }
         
-        /* Animaciones y utilidades */
         .live-indicator { animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.2); } }
-        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.1); } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         
-        .glass-panel { background: var(--glass-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--glass-border); box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5); }
-        .glass-button { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); backdrop-filter: blur(8px); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-        .glass-button:active { transform: scale(0.92); background: rgba(255,255,255,0.2); }
+        .glass-panel { background: var(--glass-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--glass-border); }
+        .glass-button { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s; }
+        .glass-button:active { transform: scale(0.95); background: rgba(255,255,255,0.15); }
         
-        canvas { display: none; }
-        .camera-feed { width: 100%; height: 100%; object-fit: cover; transition: filter 0.3s ease; }
-        
-        /* Scrollbar oculta */
-        ::-webkit-scrollbar { width: 0px; }
-        
-        /* Rangos personalizados (Sliders) */
-        input[type=range] { -webkit-appearance: none; background: transparent; width: 100%; margin: 10px 0; }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: rgba(255,255,255,0.15); border-radius: 10px; }
-        input[type=range]::-webkit-slider-thumb { border: 2px solid #10b981; height: 20px; width: 20px; border-radius: 50%; background: #020617; cursor: pointer; -webkit-appearance: none; margin-top: -7px; box-shadow: 0 0 12px rgba(16,185,129,0.6); }
-
-        /* Login Background Animation */
-        .bg-grid { background-size: 40px 40px; background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px); }
-        
-        /* Utilidad para evitar cortes en iOS Safari */
+        .camera-feed { width: 100%; height: 100%; object-fit: cover; }
         .h-dvh { height: 100dvh; }
+
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; background: #10b981; margin-top: -7px; cursor: pointer; box-shadow: 0 0 10px rgba(16,185,129,0.5); }
     </style>
 </head>
-<body class="text-slate-100 min-h-screen bg-[#020617] selection:bg-emerald-500/30">
+<body class="text-slate-100 min-h-screen bg-[#020617]">
 
     <div id="app">
-        <!-- Pantalla de carga inicial -->
+        <!-- Pantalla de carga -->
         <div class="flex items-center justify-center min-h-screen h-dvh">
-            <div class="flex flex-col items-center gap-6">
-                <div class="relative w-16 h-16">
-                    <div class="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
-                    <div class="absolute inset-0 border-4 border-emerald-500 rounded-full border-t-transparent animate-spin"></div>
-                </div>
-                <p class="text-emerald-500 font-mono text-xs tracking-[0.3em] animate-pulse">INICIANDO SISTEMA_</p>
+            <div class="flex flex-col items-center gap-4">
+                <div class="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                <p class="text-emerald-500 font-mono text-xs tracking-widest animate-pulse">CARGANDO SISTEMA...</p>
             </div>
         </div>
     </div>
 
-    <!-- Canvas oculto para procesar fotogramas -->
-    <canvas id="procCanvas" width="480" height="360"></canvas>
+    <!-- Canvas para procesar video -->
+    <canvas id="procCanvas" width="640" height="480" class="hidden"></canvas>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, updateDoc, getDoc, onSnapshot, serverTimestamp, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // CREDENCIALES PRESERVADAS INTACTAS
+        // CREDENCIALES SOLICITADAS
         const firebaseConfig = {
             apiKey: "AIzaSyBpbTRTUWomLgUqnL46nepKnXZQIPRimlI",
             authDomain: "camaras-757d8.firebaseapp.com",
@@ -80,31 +66,15 @@
         let accountId = "";
         let mode = null;
         
-        // --- Variables Globales ---
         let streamInterval = null;
-        let cameraUnsubscribe = null;
         let activeStream = null;
         let currentFacingMode = 'environment';
-        let currentFlashState = false;
+        let currentFlash = false;
         let audioCtx = null;
-
-        // Variables de Telemetría (Alta Fluidez)
-        let lastFrameTime = Date.now();
-        let frameCount = 0;
-        let byteCount = 0;
-
-        // Variables de Interfaz Avanzada
         let activeModalCamId = null;
-        const recorders = {};
-        const camSettings = {}; 
-        let walkieRecorder = null;
-        let walkieChunks = [];
 
         const appDiv = document.getElementById('app');
 
-        // ==========================================
-        // RENDERIZADO DE PANTALLAS
-        // ==========================================
         function render() {
             if (!user) return;
             if (!accountId) return renderLogin();
@@ -114,128 +84,74 @@
 
         function renderLogin() {
             appDiv.innerHTML = `
-                <div class="min-h-screen h-dvh flex items-center justify-center p-6 relative overflow-hidden bg-[#020617] bg-grid">
-                    <div class="absolute top-0 left-1/4 w-96 h-96 bg-emerald-600/30 rounded-full blur-[100px] opacity-60 mix-blend-screen pointer-events-none"></div>
-                    <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-600/20 rounded-full blur-[100px] opacity-60 mix-blend-screen pointer-events-none"></div>
-                    
-                    <div class="w-full max-w-md glass-panel p-10 rounded-[2rem] shadow-2xl relative z-10 border border-white/5" style="animation: float 8s ease-in-out infinite;">
-                        <div class="flex justify-center mb-8">
-                            <div class="relative group">
-                                <div class="absolute inset-0 bg-emerald-500 rounded-3xl blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
-                                <div class="bg-black/50 p-6 rounded-3xl border border-emerald-500/30 relative backdrop-blur-xl">
-                                    <i data-lucide="shield-check" class="w-16 h-16 text-emerald-400"></i>
-                                </div>
+                <div class="min-h-screen h-dvh flex items-center justify-center p-6 bg-slate-950 relative overflow-hidden">
+                    <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#10b981 1px, transparent 1px); background-size: 30px 30px;"></div>
+                    <div class="w-full max-w-md glass-panel p-8 rounded-[2.5rem] shadow-2xl relative z-10 border border-white/5" style="animation: float 6s ease-in-out infinite;">
+                        <div class="flex justify-center mb-6">
+                            <div class="bg-emerald-500/10 p-5 rounded-3xl border border-emerald-500/20">
+                                <i data-lucide="shield-check" class="w-12 h-12 text-emerald-400"></i>
                             </div>
                         </div>
+                        <h1 class="text-3xl font-black text-center mb-2 tracking-tight text-white">CAMVIEWER <span class="text-emerald-500 text-shadow-lg">PRO</span></h1>
+                        <p class="text-slate-400 text-center text-xs uppercase tracking-[0.3em] mb-8 font-bold">Security Network</p>
                         
-                        <div class="text-center mb-10">
-                            <h1 class="text-4xl font-black mb-2 tracking-tighter text-white drop-shadow-md">CAMVIEWER <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">PRO</span></h1>
-                            <p class="text-emerald-500/80 text-xs uppercase tracking-[0.4em] font-bold">Red de Monitoreo Táctico</p>
-                        </div>
-                        
-                        <div class="space-y-6">
-                            <div class="relative group">
-                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <i data-lucide="network" class="w-5 h-5 text-slate-500 group-focus-within:text-emerald-400 transition-colors"></i>
-                                </div>
-                                <input id="accInput" type="text" placeholder="ID DE RED SEGURA" autocomplete="off" class="w-full bg-[#050B14]/80 border border-slate-700/50 p-4 pl-12 rounded-2xl text-center text-xl font-mono text-emerald-300 placeholder-slate-600 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 outline-none uppercase transition-all backdrop-blur-md shadow-inner">
-                            </div>
-                            
-                            <button onclick="window.setAccount()" class="w-full relative overflow-hidden group bg-gradient-to-r from-emerald-600 to-teal-500 text-white p-4 rounded-2xl font-black text-lg transition-all active:scale-[0.98] shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]">
-                                <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></div>
-                                <span class="relative flex items-center justify-center gap-2">
-                                    CONECTAR SISTEMA <i data-lucide="arrow-right" class="w-5 h-5"></i>
-                                </span>
-                            </button>
+                        <div class="space-y-4">
+                            <input id="accInput" type="text" placeholder="ID DE RED (MÍN. 4 CARAC.)" class="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-center text-xl font-mono text-emerald-400 placeholder-slate-600 focus:border-emerald-500 outline-none uppercase transition-all">
+                            <button onclick="window.setAccount()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white p-4 rounded-2xl font-black text-lg transition-all active:scale-95 shadow-lg shadow-emerald-900/20">CONECTAR</button>
                         </div>
                     </div>
                 </div>`;
             lucide.createIcons();
-            
-            document.getElementById('accInput')?.addEventListener('keypress', function (e) {
-                if (e.key === 'Enter') window.setAccount();
-            });
+            document.getElementById('accInput')?.focus();
         }
 
         function renderModeSelection() {
             appDiv.innerHTML = `
-                <div class="min-h-screen h-dvh flex flex-col items-center justify-center p-6 gap-6 relative bg-[#020617] bg-grid">
-                    <div class="absolute inset-0 bg-gradient-to-b from-transparent to-[#020617] pointer-events-none"></div>
-                    
-                    <div class="text-center mb-4 glass-panel px-8 py-4 rounded-2xl border-emerald-500/20 z-10 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
-                        <p class="text-slate-400 text-[10px] font-bold tracking-[0.4em] uppercase mb-2">Conexión Segura</p>
-                        <h2 class="text-3xl font-mono text-white font-black flex items-center justify-center gap-3">
-                            <div class="w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981] live-indicator"></div> ${accountId}
-                        </h2>
+                <div class="min-h-screen h-dvh flex flex-col items-center justify-center p-6 gap-4 bg-slate-950">
+                    <div class="glass-panel px-6 py-3 rounded-2xl border-emerald-500/20 mb-4">
+                        <p class="text-emerald-500 text-[10px] font-bold tracking-widest uppercase text-center mb-1">ID DE RED ACTIVA</p>
+                        <h2 class="text-2xl font-mono text-white font-black text-center">${accountId}</h2>
                     </div>
                     
-                    <div class="w-full max-w-sm space-y-4 z-10">
-                        <button onclick="window.setMode('monitor')" class="w-full glass-panel p-6 rounded-2xl flex items-center gap-6 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group relative overflow-hidden">
-                            <div class="bg-emerald-500/10 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300 border border-emerald-500/20">
-                                <i data-lucide="monitor" class="w-8 h-8 text-emerald-400"></i>
-                            </div>
-                            <div class="text-left">
-                                <span class="font-black text-lg tracking-tight text-white block mb-1">CENTRO DE CONTROL</span>
-                                <span class="text-[10px] text-slate-400 uppercase tracking-widest block">Monitorear cámaras</span>
-                            </div>
-                            <i data-lucide="chevron-right" class="w-5 h-5 text-slate-600 absolute right-6 group-hover:text-emerald-400 group-hover:translate-x-2 transition-all"></i>
+                    <div class="w-full max-w-xs space-y-3">
+                        <button onclick="window.setMode('monitor')" class="w-full glass-panel p-5 rounded-2xl flex items-center gap-4 hover:border-emerald-500/50 transition-all group">
+                            <div class="bg-emerald-500/10 p-3 rounded-xl group-hover:scale-110 transition-transform"><i data-lucide="monitor" class="w-6 h-6 text-emerald-400"></i></div>
+                            <div class="text-left"><span class="font-bold text-white block">Monitor</span><span class="text-[10px] text-slate-500 uppercase tracking-tighter">Ver cámaras activas</span></div>
                         </button>
                         
-                        <button onclick="window.setMode('camera')" class="w-full glass-panel p-6 rounded-2xl flex items-center gap-6 hover:border-rose-500/50 hover:bg-rose-500/5 transition-all group relative overflow-hidden">
-                            <div class="bg-rose-500/10 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300 border border-rose-500/20">
-                                <i data-lucide="cctv" class="w-8 h-8 text-rose-400"></i>
-                            </div>
-                            <div class="text-left">
-                                <span class="font-black text-lg tracking-tight text-white block mb-1">ACTIVAR CÁMARA</span>
-                                <span class="text-[10px] text-slate-400 uppercase tracking-widest block">Transmitir video</span>
-                            </div>
-                            <i data-lucide="chevron-right" class="w-5 h-5 text-slate-600 absolute right-6 group-hover:text-rose-400 group-hover:translate-x-2 transition-all"></i>
+                        <button onclick="window.setMode('camera')" class="w-full glass-panel p-5 rounded-2xl flex items-center gap-4 hover:border-rose-500/50 transition-all group">
+                            <div class="bg-rose-500/10 p-3 rounded-xl group-hover:scale-110 transition-transform"><i data-lucide="cctv" class="w-6 h-6 text-rose-400"></i></div>
+                            <div class="text-left"><span class="font-bold text-white block">Transmitir</span><span class="text-[10px] text-slate-500 uppercase tracking-tighter">Usar este dispositivo</span></div>
                         </button>
                     </div>
                     
-                    <button onclick="window.logout()" class="mt-8 text-slate-500 hover:text-white text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors z-10 bg-black/40 px-6 py-3 rounded-full backdrop-blur-sm border border-white/5">
-                        <i data-lucide="power" class="w-4 h-4"></i> Desconectar
+                    <button onclick="window.logout()" class="mt-6 text-slate-500 hover:text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                        <i data-lucide="log-out" class="w-4 h-4"></i> Cerrar Sesión
                     </button>
                 </div>`;
             lucide.createIcons();
         }
 
         function renderCamera() {
-            try { window.AudioContext = window.AudioContext || window.webkitAudioContext; audioCtx = new AudioContext(); audioCtx.resume(); } catch(e){}
-
+            try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){}
             appDiv.innerHTML = `
                 <div class="min-h-screen h-dvh bg-black flex flex-col relative overflow-hidden">
-                    <video id="v-preview" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover opacity-80"></video>
+                    <video id="v-preview" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover opacity-60"></video>
                     
-                    <div class="absolute inset-0 flex flex-col justify-between p-5 pointer-events-none z-10">
-                        <div class="flex justify-between items-start pointer-events-auto w-full">
-                            <div class="flex flex-col gap-2">
-                                <div class="flex items-center gap-2 bg-rose-600/90 backdrop-blur-md px-4 py-1.5 rounded-full shadow-[0_0_20px_rgba(225,29,72,0.6)] border border-rose-400/30">
-                                    <div class="w-2.5 h-2.5 bg-white rounded-full live-indicator shadow-[0_0_8px_white]"></div>
-                                    <span class="text-[11px] font-black uppercase tracking-[0.2em] text-white">Transmitiendo</span>
-                                </div>
-                                <div class="glass-panel px-4 py-2.5 rounded-2xl text-[10px] font-mono space-y-1.5 border-white/10">
-                                    <div class="flex justify-between gap-6 items-center"><span class="text-slate-400">FPS:</span> <span id="telemetry-fps" class="text-emerald-400 font-bold text-xs">0</span></div>
-                                    <div class="flex justify-between gap-6 items-center"><span class="text-slate-400">RED:</span> <span id="telemetry-kbps" class="text-cyan-400 font-bold text-xs">0 KB/s</span></div>
-                                </div>
+                    <div class="absolute inset-0 flex flex-col justify-between p-6 z-10 pointer-events-none">
+                        <div class="flex justify-between items-start pointer-events-auto">
+                            <div class="bg-rose-600 px-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg shadow-rose-900/40">
+                                <div class="w-2 h-2 bg-white rounded-full live-indicator"></div>
+                                <span class="text-[10px] font-black uppercase tracking-widest">En Vivo</span>
                             </div>
-                            <div class="flex flex-col gap-3">
-                                <button onclick="window.flipCamera()" class="glass-panel p-3.5 rounded-full hover:bg-white/10 text-white transition-all active:scale-90 border-white/10 shadow-lg">
-                                    <i data-lucide="switch-camera" class="w-5 h-5"></i>
-                                </button>
-                                <button id="cam-flash-btn" onclick="window.toggleLocalFlash()" class="glass-panel p-3.5 rounded-full hover:bg-white/10 text-slate-400 transition-all active:scale-90 border-white/10 shadow-lg hidden">
-                                    <i data-lucide="zap" class="w-5 h-5"></i>
-                                </button>
-                            </div>
+                            <button onclick="window.flipCamera()" class="glass-panel p-3 rounded-full text-white active:scale-90 transition-transform">
+                                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                            </button>
                         </div>
 
-                        <div class="flex flex-col items-center gap-5 pointer-events-auto mb-6 w-full">
-                            <div class="glass-panel px-6 py-2 rounded-full border-white/10 flex items-center gap-3">
-                                <i data-lucide="lock" class="w-3 h-3 text-emerald-500"></i>
-                                <span class="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-300">Conexión Encriptada P2P</span>
-                            </div>
-                            
-                            <button onclick="window.stopCamera()" class="bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 p-5 rounded-full shadow-[0_0_30px_rgba(225,29,72,0.4)] transition-all active:scale-[0.85] border-4 border-black/50">
+                        <div class="flex flex-col items-center gap-6 pointer-events-auto pb-8">
+                            <p class="text-[10px] font-mono text-emerald-500 bg-black/40 px-3 py-1 rounded-full border border-emerald-500/20">ESTADO: TRANSMITIENDO...</p>
+                            <button onclick="window.stopCamera()" class="bg-rose-600 hover:bg-rose-500 p-5 rounded-full shadow-2xl transition-all active:scale-90 border-4 border-black/20">
                                 <i data-lucide="power" class="text-white w-8 h-8"></i>
                             </button>
                         </div>
@@ -247,129 +163,95 @@
 
         function renderMonitor() {
             appDiv.innerHTML = `
-                <div class="min-h-screen flex flex-col bg-[#020617]">
-                    <header class="p-4 border-b border-white/5 flex justify-between items-center glass-panel sticky top-0 z-40 rounded-none bg-black/40 backdrop-blur-xl">
-                        <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center shadow-inner">
-                                <i data-lucide="shield" class="w-5 h-5 text-emerald-400"></i>
-                            </div>
-                            <div>
-                                <h1 class="font-black text-sm tracking-tight text-white mb-0.5">${accountId}</h1>
-                                <div class="flex items-center gap-1.5">
-                                    <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full live-indicator"></div>
-                                    <span class="text-[9px] text-emerald-500 font-bold uppercase tracking-widest">Red Activa</span>
-                                </div>
-                            </div>
+                <div class="min-h-screen flex flex-col bg-slate-950">
+                    <header class="p-4 border-b border-white/5 flex justify-between items-center glass-panel sticky top-0 z-40">
+                        <div class="flex items-center gap-3">
+                            <div class="w-2 h-2 bg-emerald-500 rounded-full live-indicator"></div>
+                            <h1 class="font-black text-sm tracking-tighter text-white">${accountId} <span class="text-emerald-500 font-mono">NET</span></h1>
                         </div>
-                        <button onclick="window.setMode(null)" class="glass-button text-[10px] font-bold px-5 py-2.5 rounded-full uppercase tracking-widest text-slate-300 hover:text-white border-white/10 hover:bg-white/5 transition-all">Salir</button>
+                        <button onclick="window.setMode(null)" class="text-[10px] font-bold px-4 py-2 rounded-xl uppercase tracking-widest text-slate-400 hover:text-white transition-colors">Volver</button>
                     </header>
                     
-                    <div id="camList" class="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-7xl mx-auto pb-20">
-                        <div class="col-span-full py-32 text-center opacity-40 flex flex-col items-center" id="empty-state">
-                            <div class="relative mb-6">
-                                <i data-lucide="radar" class="w-20 h-20 text-emerald-500 animate-spin" style="animation-duration: 4s;"></i>
-                                <div class="absolute inset-0 bg-emerald-500/20 rounded-full blur-2xl"></div>
-                            </div>
-                            <p class="text-xs font-bold uppercase tracking-[0.4em] text-slate-300">Rastreando Cámaras...</p>
+                    <div id="camList" class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-24">
+                        <div class="col-span-full py-20 text-center opacity-30" id="empty-state">
+                            <i data-lucide="search" class="w-12 h-12 mx-auto mb-4"></i>
+                            <p class="text-xs font-bold uppercase tracking-widest">Buscando cámaras...</p>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Modal de Pantalla Completa Mejorado -->
-                <div id="fullScreenModal" class="fixed inset-0 z-[100] bg-black hidden flex-col h-dvh transition-opacity duration-300 opacity-0">
-                    
-                    <!-- Cabecera Modal -->
-                    <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-30 pointer-events-none bg-gradient-to-b from-black/90 to-transparent pb-12">
-                        <div class="pointer-events-auto">
-                            <button onclick="window.closeModal()" class="glass-panel p-3.5 rounded-full text-white hover:bg-rose-500/20 hover:border-rose-500/50 transition-all border-white/10 shadow-lg">
-                                <i data-lucide="chevron-down" class="w-6 h-6"></i>
-                            </button>
-                        </div>
-                        <div class="flex flex-col items-end gap-2 pointer-events-auto">
-                            <div class="glass-panel px-4 py-2 rounded-full flex items-center gap-2 border-emerald-500/30 bg-black/60 shadow-lg">
-                                <div class="w-2 h-2 bg-emerald-500 rounded-full live-indicator shadow-[0_0_5px_#10b981]"></div>
-                                <span id="modal-cam-name" class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400"></span>
-                            </div>
-                            <div class="glass-panel px-3 py-2 rounded-xl text-[10px] font-mono text-right space-y-1 bg-black/60 border-white/5 shadow-lg">
-                                <div class="flex justify-between gap-4"><span class="text-slate-400">FPS:</span> <span id="modal-fps" class="text-emerald-400 font-bold">0</span></div>
-                                <div class="flex justify-between gap-4"><span class="text-slate-400">NET:</span> <span id="modal-kbps" class="text-cyan-400 font-bold">0 KB/s</span></div>
-                            </div>
+                <!-- Modal Pantalla Completa (OFICIAL1 Style) -->
+                <div id="fullScreenModal" class="fixed inset-0 z-[100] bg-black hidden flex-col h-dvh">
+                    <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-30 pointer-events-none">
+                        <button onclick="window.closeModal()" class="pointer-events-auto glass-panel p-3 rounded-full text-white">
+                            <i data-lucide="x" class="w-6 h-6"></i>
+                        </button>
+                        <div class="pointer-events-auto bg-black/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-emerald-500/20">
+                            <span id="modal-cam-name" class="text-[10px] font-black uppercase text-emerald-400"></span>
                         </div>
                     </div>
 
-                    <!-- Contenedor de Imagen -->
-                    <div class="flex-1 relative overflow-hidden flex items-center justify-center bg-[#050505] touch-none z-10" id="modal-img-container">
-                        <img id="modal-feed" class="max-w-none max-h-none object-contain transition-transform duration-75 ease-out w-full h-full" style="transform-origin: center;" />
-                        
-                        <!-- Indicador de Grabación -->
-                        <div id="recording-badge" class="absolute top-20 left-1/2 transform -translate-x-1/2 bg-rose-600/90 backdrop-blur-md px-5 py-2 rounded-full text-white text-[11px] font-bold tracking-widest uppercase hidden items-center gap-2 live-indicator border border-rose-400/50 shadow-[0_0_20px_rgba(225,29,72,0.6)] z-20">
-                            <div class="w-2.5 h-2.5 bg-white rounded-full"></div> GRABANDO
+                    <div class="flex-1 relative flex items-center justify-center overflow-hidden bg-black" id="modal-img-container">
+                        <img id="modal-feed" class="w-full h-full object-contain transition-transform" />
+                        <div id="rec-indicator" class="absolute top-16 left-1/2 -translate-x-1/2 bg-rose-600 px-4 py-1 rounded-full text-[10px] font-bold hidden items-center gap-2 live-indicator">
+                             <div class="w-2 h-2 bg-white rounded-full"></div> GRABANDO
                         </div>
                     </div>
 
-                    <!-- PANEL DE CONTROLES (Alta visibilidad) -->
-                    <div class="w-full bg-slate-900/95 backdrop-blur-3xl border-t border-white/10 z-40 flex flex-col rounded-t-[2rem] shadow-[0_-15px_50px_rgba(0,0,0,0.8)] flex-shrink-0" style="max-height: 55vh;">
-                        <div class="overflow-y-auto p-5 pb-8 space-y-5 scroll-smooth">
-                            
-                            <!-- Barra de Sliders (Arriba) -->
-                            <div class="space-y-4 glass-panel p-4 rounded-2xl border-white/5 bg-black/30">
+                    <!-- Panel de Controles -->
+                    <div class="bg-slate-900/90 backdrop-blur-2xl p-6 border-t border-white/10 rounded-t-3xl z-40">
+                        <div class="max-w-xl mx-auto space-y-6">
+                            <!-- Sliders -->
+                            <div class="grid grid-cols-1 gap-4 bg-black/20 p-4 rounded-2xl">
                                 <div class="flex items-center gap-4">
-                                    <i data-lucide="zoom-in" class="w-5 h-5 text-slate-400"></i>
-                                    <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1" oninput="window.applyImageSettings()" class="flex-1">
+                                    <i data-lucide="zoom-in" class="w-4 h-4 text-slate-500"></i>
+                                    <input type="range" id="z-range" min="1" max="3" step="0.1" value="1" oninput="window.applyFx()" class="flex-1">
                                 </div>
                                 <div class="flex items-center gap-4">
-                                    <i data-lucide="sun" class="w-5 h-5 text-slate-400"></i>
-                                    <input type="range" id="bright-slider" min="50" max="250" step="5" value="100" oninput="window.applyImageSettings()" class="flex-1">
+                                    <i data-lucide="sun" class="w-4 h-4 text-slate-500"></i>
+                                    <input type="range" id="b-range" min="50" max="200" step="5" value="100" oninput="window.applyFx()" class="flex-1">
                                 </div>
                             </div>
 
-                            <!-- Botones Principales de Acción -->
-                            <div class="grid grid-cols-5 gap-2 items-end">
-                                <button onclick="window.actionPhoto()" class="flex flex-col items-center gap-2 text-slate-300 hover:text-white transition-colors">
-                                    <div class="glass-button p-4 rounded-full active:scale-90 bg-white/5"><i data-lucide="camera" class="w-6 h-6"></i></div>
-                                    <span class="text-[9px] font-bold uppercase tracking-widest">Foto</span>
+                            <!-- Botones Accion -->
+                            <div class="grid grid-cols-5 gap-2 items-center">
+                                <button onclick="window.doPhoto()" class="flex flex-col items-center gap-2">
+                                    <div class="glass-button p-4 rounded-2xl text-slate-300"><i data-lucide="camera" class="w-5 h-5"></i></div>
+                                    <span class="text-[8px] font-bold uppercase">Foto</span>
                                 </button>
-                                
-                                <button onclick="window.actionToggleRecording()" id="btn-record" class="flex flex-col items-center gap-2 text-slate-300 hover:text-rose-400 transition-colors">
-                                    <div class="glass-button p-4 rounded-full active:scale-90 bg-white/5"><i data-lucide="video" class="w-6 h-6"></i></div>
-                                    <span class="text-[9px] font-bold uppercase tracking-widest">Grabar</span>
+                                <button id="rec-btn" onclick="window.doToggleRec()" class="flex flex-col items-center gap-2">
+                                    <div class="glass-button p-4 rounded-2xl text-slate-300"><i data-lucide="video" class="w-5 h-5"></i></div>
+                                    <span class="text-[8px] font-bold uppercase">Video</span>
                                 </button>
-                                
-                                <!-- Botón Walkie-Talkie (Central Gigante) -->
-                                <button id="btn-walkie" onmousedown="window.startWalkie()" onmouseup="window.stopWalkie()" ontouchstart="window.startWalkie()" ontouchend="window.stopWalkie()" class="flex flex-col items-center gap-2 text-emerald-400 active:text-emerald-300 relative -top-3">
-                                    <div class="bg-gradient-to-b from-emerald-500 to-emerald-700 p-6 rounded-full shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all active:scale-90 border-4 border-slate-900 flex items-center justify-center">
-                                        <i data-lucide="mic" class="w-8 h-8 text-white"></i>
-                                    </div>
-                                    <span class="text-[10px] font-black uppercase tracking-[0.2em] text-white">Hablar</span>
+                                <button id="walkie-btn" onmousedown="window.startMic()" onmouseup="window.stopMic()" ontouchstart="window.startMic()" ontouchend="window.stopMic()" class="flex flex-col items-center gap-2 relative -top-2">
+                                    <div class="bg-emerald-600 p-5 rounded-full shadow-lg shadow-emerald-900/40"><i data-lucide="mic" class="w-6 h-6 text-white"></i></div>
+                                    <span class="text-[8px] font-black uppercase text-emerald-500">Hablar</span>
                                 </button>
-
-                                <button onclick="window.actionShare()" class="flex flex-col items-center gap-2 text-slate-300 hover:text-green-400 transition-colors">
-                                    <div class="glass-button p-4 rounded-full active:scale-90 bg-white/5"><i data-lucide="share-2" class="w-6 h-6"></i></div>
-                                    <span class="text-[9px] font-bold uppercase tracking-widest">Enviar</span>
+                                <button onclick="window.doShare()" class="flex flex-col items-center gap-2">
+                                    <div class="glass-button p-4 rounded-2xl text-slate-300"><i data-lucide="share-2" class="w-5 h-5"></i></div>
+                                    <span class="text-[8px] font-bold uppercase">Enviar</span>
                                 </button>
-                                
-                                <button onclick="window.actionSiren()" class="flex flex-col items-center gap-2 text-slate-300 hover:text-yellow-400 transition-colors">
-                                    <div class="glass-button p-4 rounded-full active:scale-90 bg-white/5"><i data-lucide="bell-ring" class="w-6 h-6"></i></div>
-                                    <span class="text-[9px] font-bold uppercase tracking-widest">Sirena</span>
+                                <button onclick="window.doSiren()" class="flex flex-col items-center gap-2">
+                                    <div class="glass-button p-4 rounded-2xl text-slate-300"><i data-lucide="bell" class="w-5 h-5"></i></div>
+                                    <span class="text-[8px] font-bold uppercase">Siren</span>
                                 </button>
                             </div>
 
-                            <!-- Controles Secundarios de Cámara -->
-                            <div class="grid grid-cols-4 gap-3">
-                                <button onclick="window.actionRemoteFlip()" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white transition-all active:scale-95">
-                                    <i data-lucide="switch-camera" class="w-5 h-5 mb-2"></i><span class="text-[9px] font-bold uppercase tracking-wider">Lente</span>
+                            <!-- Extras -->
+                            <div class="grid grid-cols-3 gap-3">
+                                <button onclick="window.doRemoteFlip()" class="glass-button p-3 rounded-xl flex items-center justify-center gap-2">
+                                    <i data-lucide="switch-camera" class="w-4 h-4 text-slate-400"></i>
+                                    <span class="text-[9px] font-bold uppercase">Girar Cam</span>
                                 </button>
-                                <button onclick="window.actionRemoteFlash()" id="btn-flash" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition-all active:scale-95">
-                                    <i data-lucide="zap" class="w-5 h-5 mb-2"></i><span class="text-[9px] font-bold uppercase tracking-wider">Flash</span>
+                                <button id="flash-btn" onclick="window.doRemoteFlash()" class="glass-button p-3 rounded-xl flex items-center justify-center gap-2">
+                                    <i data-lucide="zap" class="w-4 h-4 text-slate-400"></i>
+                                    <span class="text-[9px] font-bold uppercase">Linterna</span>
                                 </button>
-                                <button onclick="window.actionRotateLocally()" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white transition-all active:scale-95">
-                                    <i data-lucide="rotate-cw" class="w-5 h-5 mb-2"></i><span class="text-[9px] font-bold uppercase tracking-wider">Rotar</span>
-                                </button>
-                                <button onclick="window.toggleNightMode()" id="btn-night" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition-all active:scale-95">
-                                    <i data-lucide="moon" class="w-5 h-5 mb-2"></i><span class="text-[9px] font-bold uppercase tracking-wider">Noche</span>
+                                <button onclick="window.doNightMode()" id="night-btn" class="glass-button p-3 rounded-xl flex items-center justify-center gap-2">
+                                    <i data-lucide="moon" class="w-4 h-4 text-slate-400"></i>
+                                    <span class="text-[9px] font-bold uppercase">Visión N.</span>
                                 </button>
                             </div>
-
                         </div>
                     </div>
                 </div>`;
@@ -377,470 +259,295 @@
             startMonitoring();
         }
 
-        // ==========================================
-        // LÓGICA DE BROADCAST (CÁMARA TRANSMISORA)
-        // ==========================================
+        // --- LÓGICA DE TRANSMISIÓN ---
         async function startBroadcasting() {
             try {
                 activeStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 480 } }, 
                     audio: false 
                 });
-                const video = document.getElementById('v-preview');
-                video.srcObject = activeStream;
-
+                document.getElementById('v-preview').srcObject = activeStream;
                 const canvas = document.getElementById('procCanvas');
-                const ctx = canvas.getContext('2d', { alpha: false });
+                const ctx = canvas.getContext('2d');
                 const camRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid);
 
-                const track = activeStream.getVideoTracks()[0];
-                if(track && track.getCapabilities && track.getCapabilities().torch) {
-                    document.getElementById('cam-flash-btn').classList.remove('hidden');
-                }
+                await setDoc(camRef, { accountId, name: 'Cámara ' + user.uid.slice(0,3), flash: false, lastSeen: serverTimestamp() }, { merge: true });
 
-                await setDoc(camRef, {
-                    accountId,
-                    name: 'Cam-' + user.uid.substring(0,4).toUpperCase(),
-                    flash: false,
-                    requestedFacingMode: currentFacingMode
-                }, { merge: true });
+                streamInterval = setInterval(() => {
+                    ctx.drawImage(document.getElementById('v-preview'), 0, 0, canvas.width, canvas.height);
+                    const base64 = canvas.toDataURL('image/jpeg', 0.5);
+                    updateDoc(camRef, { frame: base64, lastSeen: serverTimestamp() }).catch(()=>{});
+                }, 100);
 
-                // ~22 FPS = 45ms
-                streamInterval = setInterval(async () => {
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const base64Frame = canvas.toDataURL('image/jpeg', 0.4); 
-                    
-                    frameCount++;
-                    byteCount += base64Frame.length;
-                    const now = Date.now();
-                    if (now - lastFrameTime >= 1000) {
-                        const fpsEl = document.getElementById('telemetry-fps');
-                        const kbpsEl = document.getElementById('telemetry-kbps');
-                        if(fpsEl) fpsEl.innerText = frameCount;
-                        if(kbpsEl) kbpsEl.innerText = Math.round((byteCount * 0.75) / 1024) + ' KB/s';
-                        frameCount = 0; byteCount = 0; lastFrameTime = now;
-                    }
-
-                    try {
-                        await updateDoc(camRef, { 
-                            frame: base64Frame, 
-                            lastSeen: serverTimestamp(), 
-                            telemetry: { 
-                                fps: document.getElementById('telemetry-fps')?.innerText || 0, 
-                                kbps: document.getElementById('telemetry-kbps')?.innerText || 0 
-                            } 
-                        });
-                    } catch (e) {
-                        console.warn("Retraso en red", e);
-                    }
-                }, 45);
-
-                cameraUnsubscribe = onSnapshot(camRef, async (snap) => {
-                    if(!snap.exists()) { window.stopCamera(false); return; }
+                onSnapshot(camRef, (snap) => {
+                    if(!snap.exists()) return;
                     const data = snap.data();
                     
-                    if(data.flash !== undefined && data.flash !== currentFlashState) {
-                        currentFlashState = data.flash;
-                        applyFlash(currentFlashState);
+                    // Flash remoto
+                    if(data.flash !== currentFlash) {
+                        currentFlash = data.flash;
+                        const track = activeStream.getVideoTracks()[0];
+                        if(track && track.getCapabilities()?.torch) track.applyConstraints({ advanced: [{ torch: currentFlash }] });
+                    }
+                    
+                    // Sirena remota
+                    if(data.sirenTrigger && data.sirenTrigger !== window.lastSiren) {
+                        window.lastSiren = data.sirenTrigger;
+                        playSiren();
                     }
 
+                    // Audio remoto (Walkie-Talkie)
+                    if(data.audioData && data.audioTime !== window.lastAudioTime) {
+                        window.lastAudioTime = data.audioTime;
+                        new Audio(data.audioData).play().catch(()=>{});
+                    }
+
+                    // Cambio de cámara remoto
                     if(data.requestedFacingMode && data.requestedFacingMode !== currentFacingMode) {
-                        window.flipCamera(data.requestedFacingMode);
-                    }
-
-                    if(data.sirenTrigger && data.sirenTrigger !== window.lastSirenTrigger) {
-                        window.lastSirenTrigger = data.sirenTrigger;
-                        playLoudSiren();
-                    }
-
-                    if(data.audioTimestamp && data.audioTimestamp !== window.lastAudioTimestamp) {
-                        window.lastAudioTimestamp = data.audioTimestamp;
-                        if(data.audioChunk) {
-                            try {
-                                const audio = new Audio(data.audioChunk);
-                                await audio.play();
-                            } catch(e) { console.log("Audio bloqueado por navegador", e); }
-                        }
+                        window.flipCamera();
                     }
                 });
 
-            } catch (err) {
-                alert("Error: Permite el acceso a la cámara y micrófono en tu navegador.");
+            } catch (e) {
+                alert("Error al iniciar cámara: " + e.message);
                 window.setMode(null);
             }
         }
 
-        function applyFlash(enable) {
-            if(!activeStream) return;
-            const track = activeStream.getVideoTracks()[0];
-            if(track && track.getCapabilities && track.getCapabilities().torch) {
-                track.applyConstraints({ advanced: [{ torch: enable }] }).catch(e => {});
-            }
-        }
-
-        window.toggleLocalFlash = () => {
-            currentFlashState = !currentFlashState;
-            applyFlash(currentFlashState);
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid), { flash: currentFlashState }).catch(e=>console.log(e));
+        window.flipCamera = () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            if(activeStream) activeStream.getTracks().forEach(t => t.stop());
+            clearInterval(streamInterval);
+            startBroadcasting();
         };
 
-        window.flipCamera = async (forceMode = null) => {
-            currentFacingMode = forceMode || (currentFacingMode === 'environment' ? 'user' : 'environment');
-            if(activeStream) activeStream.getTracks().forEach(t => t.stop());
+        window.stopCamera = async () => {
             clearInterval(streamInterval);
-            if(cameraUnsubscribe) cameraUnsubscribe();
-            
-            try { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid), { requestedFacingMode: currentFacingMode }); } catch(e) {}
-            await startBroadcasting();
-        }
-
-        window.stopCamera = async (cleanDb = true) => {
-            clearInterval(streamInterval);
-            if(cameraUnsubscribe) cameraUnsubscribe();
             if(activeStream) activeStream.getTracks().forEach(t => t.stop());
-            if (user && cleanDb) {
-                try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid)); } catch(e){}
-            }
+            try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid)); } catch(e){}
             window.setMode(null);
         };
 
-        function playLoudSiren() {
+        function playSiren() {
             if(!audioCtx) return;
-            try { audioCtx.resume(); } catch(e){}
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            osc.type = 'square';
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            const now = audioCtx.currentTime;
-            osc.frequency.setValueAtTime(400, now);
-            osc.frequency.linearRampToValueAtTime(1200, now + 0.5);
-            osc.frequency.linearRampToValueAtTime(400, now + 1.0);
-            osc.frequency.linearRampToValueAtTime(1200, now + 1.5);
-            osc.frequency.linearRampToValueAtTime(400, now + 2.0);
-            
-            gain.gain.setValueAtTime(1, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 2.0);
-            
-            osc.start(now);
-            osc.stop(now + 2.0);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.5);
+            osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 1);
+            osc.start(); osc.stop(audioCtx.currentTime + 2);
         }
 
-        // ==========================================
-        // LÓGICA DE MONITOR (VISUALIZADOR)
-        // ==========================================
+        // --- LÓGICA DE MONITOREO ---
         function startMonitoring() {
-            const streamsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras');
-            
-            onSnapshot(streamsCol, (snapshot) => {
+            const colRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras');
+            onSnapshot(colRef, (snap) => {
                 const list = document.getElementById('camList');
-                if (!list && !activeModalCamId) return;
+                if(!list) return;
 
-                const activeStreams = snapshot.docs.map(d => ({id: d.id, ...d.data()})).filter(s => s.accountId === accountId);
+                const cameras = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(c => c.accountId === accountId);
+                
+                if(cameras.length > 0) document.getElementById('empty-state')?.classList.add('hidden');
+                else document.getElementById('empty-state')?.classList.remove('hidden');
 
-                if (activeModalCamId) {
-                    const camData = activeStreams.find(s => s.id === activeModalCamId);
-                    if (camData) {
-                        const modalImg = document.getElementById('modal-feed');
-                        if (modalImg) modalImg.src = camData.frame || '';
-                        
-                        const fpsEl = document.getElementById('modal-fps');
-                        const kbpsEl = document.getElementById('modal-kbps');
-                        if(fpsEl) fpsEl.innerText = camData.telemetry?.fps || '0';
-                        if(kbpsEl) kbpsEl.innerText = camData.telemetry?.kbps || '0 KB/s';
-                        
-                        const btnFlash = document.getElementById('btn-flash');
-                        if(btnFlash) {
-                            if(camData.flash) { btnFlash.classList.add('text-yellow-400'); btnFlash.classList.remove('text-slate-300'); }
-                            else { btnFlash.classList.remove('text-yellow-400'); btnFlash.classList.add('text-slate-300'); }
-                        }
+                // Actualizar Modal si está abierto
+                if(activeModalCamId) {
+                    const activeData = cameras.find(c => c.id === activeModalCamId);
+                    if(activeData) {
+                        document.getElementById('modal-feed').src = activeData.frame || '';
+                        const fBtn = document.getElementById('flash-btn');
+                        if(activeData.flash) fBtn.classList.add('text-yellow-400');
+                        else fBtn.classList.remove('text-yellow-400');
 
-                        if(recorders[activeModalCamId] && camData.frame) {
-                            const imgObj = new Image();
-                            imgObj.onload = () => recorders[activeModalCamId].ctx.drawImage(imgObj, 0, 0, 640, 480);
-                            imgObj.src = camData.frame;
+                        // Si estamos grabando, dibujar en el canvas de grabacion
+                        if(window.isRecording) {
+                            const img = new Image();
+                            img.onload = () => window.recCtx.drawImage(img, 0, 0, 640, 480);
+                            img.src = activeData.frame;
                         }
                     } else {
                         window.closeModal();
                     }
                 }
 
-                if (list) {
-                    const emptyState = document.getElementById('empty-state');
-                    if (activeStreams.length === 0) {
-                        if(!emptyState) list.innerHTML = `<div class="col-span-full py-32 text-center opacity-40 flex flex-col items-center" id="empty-state"><div class="relative mb-6"><i data-lucide="radar" class="w-20 h-20 text-emerald-500 animate-spin" style="animation-duration: 4s;"></i><div class="absolute inset-0 bg-emerald-500/20 rounded-full blur-2xl"></div></div><p class="text-xs font-bold uppercase tracking-[0.4em] text-slate-300">Esperando cámaras...</p></div>`;
-                        lucide.createIcons();
-                        return;
+                // Sincronizar rejilla
+                cameras.forEach(c => {
+                    let el = document.getElementById('card-' + c.id);
+                    if(!el) {
+                        el = document.createElement('div');
+                        el.id = 'card-' + c.id;
+                        el.className = "glass-panel rounded-3xl overflow-hidden aspect-video relative cursor-pointer group";
+                        el.onclick = () => window.openModal(c.id, c.name);
+                        el.innerHTML = `
+                            <img id="img-${c.id}" class="camera-feed" />
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                            <div class="absolute top-3 left-3 flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                                <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full live-indicator"></div>
+                                <span class="text-[9px] font-bold uppercase tracking-widest text-white">${c.name}</span>
+                            </div>
+                            <!-- BOTÓN ELIMINAR CÁMARA -->
+                            <button onclick="event.stopPropagation(); window.deleteCam('${c.id}')" class="absolute top-3 right-3 bg-rose-600 p-2.5 rounded-xl shadow-lg shadow-rose-900/30 hover:bg-rose-500 active:scale-90 transition-all z-20">
+                                <i data-lucide="trash-2" class="w-4 h-4 text-white"></i>
+                            </button>
+                        `;
+                        list.appendChild(el);
+                        lucide.createIcons({root: el});
                     }
-                    if(emptyState) emptyState.remove();
+                    document.getElementById('img-' + c.id).src = c.frame || '';
+                });
 
-                    const currentIds = activeStreams.map(c => `cam-grid-${c.id}`);
-                    Array.from(list.children).forEach(child => {
-                        if (child.id && !currentIds.includes(child.id)) { child.remove(); }
-                    });
-
-                    activeStreams.forEach(s => {
-                        const cardId = `cam-grid-${s.id}`;
-                        let card = document.getElementById(cardId);
-                        const displayName = s.customName || s.name;
-                        
-                        if (!card) {
-                            card = document.createElement('div');
-                            card.id = cardId;
-                            card.className = "video-container bg-[#050B14] rounded-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-slate-800 group relative cursor-pointer hover:border-emerald-500/50 transition-all h-72 hover:shadow-[0_10px_40px_rgba(16,185,129,0.15)]";
-                            card.onclick = () => window.openModal(s.id, displayName);
-                            
-                            card.innerHTML = `
-                                <img id="feed-grid-${s.id}" class="camera-feed" />
-                                <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 pointer-events-none"></div>
-                                
-                                <div class="absolute top-4 left-4 flex items-center gap-2 glass-panel px-3 py-1.5 rounded-full border border-white/10 pointer-events-none">
-                                    <div class="w-2 h-2 bg-emerald-500 rounded-full live-indicator shadow-[0_0_8px_#10b981]"></div>
-                                    <span id="name-grid-${s.id}" class="text-[11px] font-black uppercase tracking-widest text-white"></span>
-                                </div>
-
-                                <!-- BOTÓN ELIMINAR CÁMARA (MUY VISIBLE) -->
-                                <div class="absolute top-4 right-4 z-[60] pointer-events-auto">
-                                    <button onclick="event.stopPropagation(); window.deleteCamera('${s.id}')" class="bg-rose-600/90 hover:bg-rose-500 backdrop-blur-md px-3 py-2 rounded-xl shadow-[0_0_15px_rgba(225,29,72,0.4)] text-white transition-all transform hover:scale-105 border border-rose-400/30 flex items-center gap-2">
-                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                        <span class="text-[9px] font-black uppercase tracking-widest">Eliminar</span>
-                                    </button>
-                                </div>
-
-                                <div class="absolute bottom-5 left-0 right-0 flex justify-center pointer-events-none">
-                                    <div class="bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full flex items-center gap-2 transform translate-y-2 opacity-80 group-hover:opacity-100 transition-all shadow-lg">
-                                        <i data-lucide="eye" class="w-4 h-4 text-emerald-400"></i>
-                                        <span class="text-[10px] font-bold text-white uppercase tracking-widest">Tocar para Opciones</span>
-                                    </div>
-                                </div>
-                            `;
-                            list.appendChild(card);
-                            lucide.createIcons({root: card});
-                        }
-                        
-                        const feedImg = document.getElementById(`feed-grid-${s.id}`);
-                        if(feedImg) feedImg.src = s.frame || '';
-                        const nameSpan = document.getElementById(`name-grid-${s.id}`);
-                        if(nameSpan) nameSpan.innerText = displayName;
-                    });
-                }
+                // Limpiar desconectadas
+                Array.from(list.children).forEach(child => {
+                    const cid = child.id?.replace('card-', '');
+                    if(cid && !cameras.find(c => c.id === cid)) child.remove();
+                });
             });
         }
 
-        // ==========================================
-        // FUNCIONES DE PANTALLA COMPLETA & CONTROLES
-        // ==========================================
-        window.openModal = (camId, camName) => {
-            activeModalCamId = camId;
-            document.getElementById('modal-cam-name').innerText = camName;
-            
-            if(!camSettings[camId]) camSettings[camId] = { zoom: 1, rotation: 0, brightness: 100, nightMode: false };
-            const s = camSettings[camId];
-            
-            document.getElementById('zoom-slider').value = s.zoom;
-            document.getElementById('bright-slider').value = s.brightness;
-            window.applyImageSettings();
+        window.deleteCam = async (id) => {
+            if(confirm("¿Seguro que quieres desconectar esta cámara remota?")) {
+                try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', id)); } catch(e){}
+            }
+        };
 
-            const btnNight = document.getElementById('btn-night');
-            if(s.nightMode) { btnNight.classList.add('text-emerald-400'); btnNight.classList.remove('text-slate-300'); }
-            else { btnNight.classList.remove('text-emerald-400'); btnNight.classList.add('text-slate-300'); }
-
-            const modal = document.getElementById('fullScreenModal');
-            modal.classList.remove('hidden');
-            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        // --- ACCIONES DE CONTROL ---
+        window.openModal = (id, name) => {
+            activeModalCamId = id;
+            document.getElementById('modal-cam-name').innerText = name;
+            document.getElementById('fullScreenModal').classList.remove('hidden');
+            window.isNight = false;
         };
 
         window.closeModal = () => {
-            const modal = document.getElementById('fullScreenModal');
-            modal.classList.add('opacity-0');
-            setTimeout(() => { modal.classList.add('hidden'); activeModalCamId = null; }, 300);
+            if(window.isRecording) window.doToggleRec();
+            activeModalCamId = null;
+            document.getElementById('fullScreenModal').classList.add('hidden');
         };
 
-        window.deleteCamera = async (id) => {
-            if(confirm("¿Estás seguro de desconectar y ELIMINAR esta cámara de la red permanentemente?")) {
-                try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', id)); } catch(e) { console.error("Error al eliminar", e); }
+        window.applyFx = () => {
+            const z = document.getElementById('z-range').value;
+            const b = document.getElementById('b-range').value;
+            const img = document.getElementById('modal-feed');
+            img.style.transform = `scale(${z})`;
+            img.style.filter = window.isNight 
+                ? `brightness(${b}%) sepia(100%) hue-rotate(80deg) saturate(300%) contrast(1.2)` 
+                : `brightness(${b}%)`;
+        };
+
+        window.doNightMode = () => {
+            window.isNight = !window.isNight;
+            const btn = document.getElementById('night-btn');
+            btn.classList.toggle('text-emerald-400');
+            window.applyFx();
+        };
+
+        window.doRemoteFlash = async () => {
+            const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId);
+            const snap = await getDoc(ref);
+            if(snap.exists()) await updateDoc(ref, { flash: !snap.data().flash });
+        };
+
+        window.doRemoteFlip = async () => {
+            const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId);
+            const snap = await getDoc(ref);
+            if(snap.exists()) {
+                const cur = snap.data().requestedFacingMode || 'environment';
+                await updateDoc(ref, { requestedFacingMode: cur === 'environment' ? 'user' : 'environment' });
             }
         };
 
-        window.applyImageSettings = () => {
-            if(!activeModalCamId) return;
-            const s = camSettings[activeModalCamId];
-            s.zoom = document.getElementById('zoom-slider').value;
-            s.brightness = document.getElementById('bright-slider').value;
-            
-            const img = document.getElementById('modal-feed');
-            img.style.transform = `scale(${s.zoom}) rotate(${s.rotation}deg)`;
-            
-            if (s.nightMode) {
-                img.style.filter = `sepia(1) hue-rotate(80deg) saturate(300%) brightness(${s.brightness/100 + 0.4}) contrast(1.5)`;
-            } else {
-                img.style.filter = `brightness(${s.brightness}%)`;
-            }
+        window.doSiren = async () => {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId), { sirenTrigger: Date.now() });
         };
 
-        window.actionRotateLocally = () => {
-            if(!activeModalCamId) return;
-            camSettings[activeModalCamId].rotation = (camSettings[activeModalCamId].rotation + 90) % 360;
-            window.applyImageSettings();
-        };
-
-        window.toggleNightMode = () => {
-            if(!activeModalCamId) return;
-            const s = camSettings[activeModalCamId];
-            s.nightMode = !s.nightMode;
-            const btn = document.getElementById('btn-night');
-            if(s.nightMode) { btn.classList.add('text-emerald-400'); btn.classList.remove('text-slate-300'); }
-            else { btn.classList.remove('text-emerald-400'); btn.classList.add('text-slate-300'); }
-            window.applyImageSettings();
-        };
-
-        window.actionRemoteFlip = async () => {
-            if(!activeModalCamId) return;
-            try {
-                const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId);
-                const snap = await getDoc(ref);
-                if(snap.exists()) {
-                    const newMode = snap.data().requestedFacingMode === 'environment' ? 'user' : 'environment';
-                    await updateDoc(ref, { requestedFacingMode: newMode });
-                }
-            } catch(e) { console.error(e); }
-        };
-
-        window.actionRemoteFlash = async () => {
-            if(!activeModalCamId) return;
-            try {
-                const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId);
-                const snap = await getDoc(ref);
-                if(snap.exists()) await updateDoc(ref, { flash: !snap.data().flash });
-            } catch(e) { console.error(e); }
-        };
-
-        window.actionSiren = async () => {
-            if(!activeModalCamId) return;
-            try { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId), { sirenTrigger: Date.now() }); } catch(e) { console.error(e); }
-        };
-
-        window.actionPhoto = () => {
-            if(!activeModalCamId) return;
-            const img = document.getElementById('modal-feed');
-            if(!img || !img.src) return;
+        window.doPhoto = () => {
             const link = document.createElement('a');
-            link.href = img.src;
-            link.download = `Seguridad_${new Date().getTime()}.jpg`;
+            link.href = document.getElementById('modal-feed').src;
+            link.download = `captura_${Date.now()}.jpg`;
             link.click();
         };
 
-        window.actionToggleRecording = () => {
-            if(!activeModalCamId) return;
-            const camId = activeModalCamId;
-            const btn = document.getElementById('btn-record');
-            const badge = document.getElementById('recording-badge');
-            
-            if(recorders[camId]) {
-                recorders[camId].recorder.stop();
-                delete recorders[camId];
-                btn.classList.remove('text-rose-400');
-                btn.classList.add('text-slate-300');
-                badge.classList.add('hidden');
-                badge.classList.remove('flex');
-            } else {
+        window.doShare = async () => {
+            const src = document.getElementById('modal-feed').src;
+            if(!src) return;
+            const res = await fetch(src);
+            const blob = await res.blob();
+            const file = new File([blob], 'alerta.jpg', { type: 'image/jpeg' });
+            if(navigator.share) navigator.share({ files: [file], title: 'Seguridad Cam' }).catch(()=>{});
+            else window.open(`https://api.whatsapp.com/send?text=Revisar%20Camara%20ID:%20${activeModalCamId}`);
+        };
+
+        // Grabación (Simulada grabando el stream de imagenes en un canvas)
+        window.doToggleRec = () => {
+            const btn = document.getElementById('rec-btn');
+            const indicator = document.getElementById('rec-indicator');
+            if(!window.isRecording) {
+                window.isRecording = true;
+                btn.classList.add('text-rose-500');
+                indicator.classList.remove('hidden'); indicator.classList.add('flex');
+                
                 const canvas = document.createElement('canvas');
                 canvas.width = 640; canvas.height = 480;
-                const ctx = canvas.getContext('2d');
-                
-                const stream = canvas.captureStream(25);
-                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-                const chunks = [];
-                
-                recorder.ondataavailable = e => chunks.push(e.data);
-                recorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: 'video/webm' });
+                window.recCtx = canvas.getContext('2d');
+                const stream = canvas.captureStream(10);
+                window.mediaRec = new MediaRecorder(stream, { mimeType: 'video/webm' });
+                window.recChunks = [];
+                window.mediaRec.ondataavailable = (e) => window.recChunks.push(e.data);
+                window.mediaRec.onstop = () => {
+                    const blob = new Blob(window.recChunks, { type: 'video/webm' });
                     const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `Registro_${new Date().getTime()}.webm`;
-                    link.click();
+                    const link = document.createElement('a'); link.href = url; link.download = 'grabacion.webm'; link.click();
                 };
-                
-                recorder.start();
-                recorders[camId] = { recorder, canvas, ctx };
-                btn.classList.add('text-rose-400');
-                btn.classList.remove('text-slate-300');
-                badge.classList.remove('hidden');
-                badge.classList.add('flex');
+                window.mediaRec.start();
+            } else {
+                window.isRecording = false;
+                btn.classList.remove('text-rose-500');
+                indicator.classList.add('hidden');
+                window.mediaRec.stop();
             }
         };
 
-        window.startWalkie = async () => {
-            if(!activeModalCamId) return;
-            const btn = document.getElementById('btn-walkie');
-            btn.classList.add('scale-110');
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                walkieRecorder = new MediaRecorder(stream);
-                walkieChunks = [];
-                walkieRecorder.ondataavailable = e => walkieChunks.push(e.data);
-                walkieRecorder.onstop = async () => {
-                    const blob = new Blob(walkieChunks, { type: 'audio/webm' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onloadend = async () => {
-                        const base64Audio = reader.result;
-                        try {
-                            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId), {
-                                audioChunk: base64Audio,
-                                audioTimestamp: Date.now()
-                            });
-                        } catch(e) {}
-                    }
-                    stream.getTracks().forEach(t => t.stop());
-                };
-                walkieRecorder.start();
-            } catch(e) { alert("Para usar el intercomunicador, permite el acceso al micrófono."); }
-        };
-
-        window.stopWalkie = () => {
-            const btn = document.getElementById('btn-walkie');
-            btn.classList.remove('scale-110');
-            if(walkieRecorder && walkieRecorder.state === 'recording') walkieRecorder.stop();
-        };
-
-        window.actionShare = async () => {
-            if(!activeModalCamId) return;
-            const img = document.getElementById('modal-feed');
-            if(!img || !img.src) return;
-
-            try {
-                const res = await fetch(img.src);
-                const blob = await res.blob();
-                const file = new File([blob], `Alerta_${new Date().getTime()}.jpg`, { type: "image/jpeg" });
-
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        title: 'Alerta de Seguridad | CamViewer Pro',
-                        text: 'Verificación de cámara en tiempo real. Se adjunta evidencia.',
-                        files: [file]
+        // Walkie-Talkie
+        window.startMic = async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            window.audioRec = new MediaRecorder(stream);
+            window.audioChunks = [];
+            window.audioRec.ondataavailable = e => window.audioChunks.push(e.data);
+            window.audioRec.onstop = async () => {
+                const blob = new Blob(window.audioChunks, { type: 'audio/webm' });
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onloadend = () => {
+                    updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalCamId), {
+                        audioData: reader.result,
+                        audioTime: Date.now()
                     });
-                } else {
-                    window.open(`https://api.whatsapp.com/send?text=Alerta%20de%20Seguridad.%20La%20imagen%20ha%20sido%20descargada%20en%20tu%20dispositivo,%20por%20favor%20adjúntala%20manualmente.`);
-                    window.actionPhoto();
-                }
-            } catch (error) { console.error("Error compartiendo", error); }
+                };
+                stream.getTracks().forEach(t => t.stop());
+            };
+            window.audioRec.start();
+            document.getElementById('walkie-btn').classList.add('scale-110');
         };
 
+        window.stopMic = () => {
+            if(window.audioRec && window.audioRec.state === 'recording') window.audioRec.stop();
+            document.getElementById('walkie-btn').classList.remove('scale-110');
+        };
+
+        // Helpers
         window.setAccount = () => {
-            const input = document.getElementById('accInput').value.toUpperCase().trim();
-            if (input.length >= 4) { accountId = input; render(); }
+            const val = document.getElementById('accInput').value.trim().toUpperCase();
+            if(val.length >= 4) { accountId = val; render(); }
+            else alert("El ID debe tener al menos 4 caracteres.");
         };
-
         window.setMode = (m) => { mode = m; render(); };
-        window.logout = () => { location.reload(); };
+        window.logout = () => location.reload();
 
-        onAuthStateChanged(auth, (u) => {
+        onAuthStateChanged(auth, u => {
             user = u;
-            if (!u) signInAnonymously(auth);
+            if(!u) signInAnonymously(auth);
             else render();
         });
 
