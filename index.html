@@ -32,14 +32,15 @@
 <body>
 
     <div id="app"></div>
-    <canvas id="procCanvas" width="400" height="300" class="hidden"></canvas>
+    <!-- Canvas optimizado para menor consumo de red -->
+    <canvas id="procCanvas" width="320" height="240" class="hidden"></canvas>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, updateDoc, getDoc, onSnapshot, serverTimestamp, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // --- CREDENCIALES ---
+        // --- CREDENCIALES EXACTAS PROPORCIONADAS ---
         const firebaseConfig = {
             apiKey: "AIzaSyBpbTRTUWomLgUqnL46nepKnXZQIPRimlI",
             authDomain: "camaras-757d8.firebaseapp.com",
@@ -53,13 +54,13 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const APP_ID = "camaras-757d8";
+        const APP_ID = "camaras-757d8"; // Acorde a las reglas de Firestore proporcionadas
 
         let user = null;
         let accountId = localStorage.getItem('camviewer_id') || "";
         let mode = null;
         let activeStream = null;
-        let activeInterval = null;
+        let isStreaming = false; // Nueva bandera para controlar el loop de transmisión
         let activeModalId = null;
 
         const appDiv = document.getElementById('app');
@@ -101,7 +102,7 @@
             lucide.createIcons();
         }
 
-        // --- MODO TRANSMISIÓN (VIDEO RÁPIDO) ---
+        // --- MODO TRANSMISIÓN (MEJORADO PARA MÁXIMA FLUIDEZ) ---
         async function renderCamera() {
             appDiv.innerHTML = `
                 <div class="h-screen bg-black relative">
@@ -122,27 +123,49 @@
             lucide.createIcons();
 
             try {
+                // Resolución optimizada para enviar datos rápido
                 activeStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: 400, height: 300 }, 
+                    video: { facingMode: 'environment', width: { ideal: 320 }, height: { ideal: 240 } }, 
                     audio: false 
                 });
                 const video = document.getElementById('v');
                 video.srcObject = activeStream;
 
                 const canvas = document.getElementById('procCanvas');
-                const ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 const camRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid);
 
                 await setDoc(camRef, { accountId, name: "Cam " + user.uid.slice(0,3), lastSeen: serverTimestamp() }, { merge: true });
 
-                // INTERVALO OPTIMIZADO (Sin lag)
-                activeInterval = setInterval(() => {
-                    ctx.drawImage(video, 0, 0, 400, 300);
-                    const base64 = canvas.toDataURL('image/jpeg', 0.4); // Compresión alta para velocidad
-                    updateDoc(camRef, { frame: base64, lastSeen: serverTimestamp() }).catch(()=>{});
-                }, 100); // 10 fotos por segundo (suficiente para fluidez sin saturar)
+                isStreaming = true;
 
-            } catch (e) { alert("Error de cámara"); window.setMode(null); }
+                // BUCLE ASÍNCRONO DE ALTA FLUIDEZ
+                // Elimina la congestión de red al esperar que termine la subida anterior
+                const transmitFrame = async () => {
+                    if (!isStreaming || mode !== 'camera') return;
+                    
+                    try {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        // Uso de image/webp reduce drásticamente el peso comparado con jpeg
+                        const base64 = canvas.toDataURL('image/webp', 0.35); 
+                        await updateDoc(camRef, { frame: base64, lastSeen: serverTimestamp() });
+                    } catch (e) {
+                        // Silenciar errores temporales de red para mantener la transmisión
+                    }
+                    
+                    // Llama el siguiente frame 30ms después de que terminó el anterior
+                    if (isStreaming) {
+                        setTimeout(transmitFrame, 30);
+                    }
+                };
+
+                // Iniciar ciclo de transmisión
+                transmitFrame();
+
+            } catch (e) { 
+                alert("Error de cámara"); 
+                window.setMode(null); 
+            }
         }
 
         // --- MODO MONITOR ---
@@ -210,10 +233,11 @@
             lucide.createIcons();
 
             onSnapshot(collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras'), (snap) => {
+                if(!user) return;
                 const list = document.getElementById('camList');
                 const cameras = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(c => c.accountId === accountId);
                 
-                if(cameras.length > 0) list.innerHTML = "";
+                if(cameras.length > 0 && list.innerHTML.includes("ESPERANDO")) list.innerHTML = "";
                 
                 cameras.forEach(c => {
                     let card = document.getElementById('c-'+c.id);
@@ -233,13 +257,23 @@
                         list.appendChild(card);
                         lucide.createIcons({root: card});
                     }
-                    document.getElementById('img-'+c.id).src = c.frame || "";
+                    
+                    // Actualización sin parpadeos
+                    const imgEl = document.getElementById('img-'+c.id);
+                    if(imgEl && c.frame && imgEl.src !== c.frame) {
+                        imgEl.src = c.frame;
+                    }
 
-                    // Actualizar modal si está abierto
+                    // Actualizar modal si está abierto y es diferente al actual
                     if(activeModalId === c.id) {
-                        document.getElementById('m-feed').src = c.frame || "";
+                        const modalImg = document.getElementById('m-feed');
+                        if(modalImg && c.frame && modalImg.src !== c.frame) {
+                            modalImg.src = c.frame;
+                        }
                     }
                 });
+            }, (error) => {
+                console.error("Snapshot error:", error);
             });
         }
 
@@ -270,9 +304,11 @@
         };
 
         window.alertSiren = () => {
-            // Emular sonido de sirena en el dispositivo receptor
             updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', activeModalId), { siren: Date.now() });
-            alert("Sirena activada remotamente");
+            // Alert visual para el que oprime en vez del clásico alert de navegador
+            const btn = document.querySelector('[data-lucide="bell"]').parentElement;
+            btn.style.backgroundColor = "rgba(249, 115, 22, 0.5)";
+            setTimeout(() => btn.style.backgroundColor = "", 1000);
         };
 
         window.snap = () => {
@@ -286,13 +322,14 @@
             const blob = await (await fetch(document.getElementById('m-feed').src)).blob();
             const file = new File([blob], 'foto.jpg', {type: 'image/jpeg'});
             if(navigator.share) navigator.share({files: [file]});
-            else alert("Usa un navegador moderno para compartir");
         };
 
         window.deleteCam = async (id) => {
-            if(confirm("¿Eliminar esta cámara?")) {
-                await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', id));
-            }
+            // Reemplazo de window.confirm nativo por ser app-like
+            const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', id);
+            await deleteDoc(ref);
+            const el = document.getElementById('c-'+id);
+            if (el) el.remove();
         };
 
         window.setAccount = () => {
@@ -306,18 +343,27 @@
 
         window.setMode = (m) => {
             if(activeStream) activeStream.getTracks().forEach(t => t.stop());
-            clearInterval(activeInterval);
+            isStreaming = false; // Detener bucle de subida
             mode = m;
             render();
         };
 
         window.logout = () => { localStorage.clear(); location.reload(); };
 
-        // --- AUTH ---
+        // --- AUTH Y ARRANQUE ---
+        const init = async () => {
+            try {
+                // Iniciar sesión anónima al arrancar
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Fallo de Autenticación:", error);
+            }
+        };
+        init();
+
         onAuthStateChanged(auth, u => {
             user = u;
-            if(!u) signInAnonymously(auth);
-            else render();
+            if(u) render();
         });
 
     </script>
