@@ -13,6 +13,8 @@
         canvas { display: none; }
         .video-container { position: relative; background: #000; border-radius: 1.5rem; overflow: hidden; aspect-ratio: 16/9; }
         .camera-feed { width: 100%; height: 100%; object-fit: cover; }
+        /* Scrollbar oculta para limpieza visual */
+        ::-webkit-scrollbar { width: 0px; }
     </style>
 </head>
 <body class="text-slate-100 min-h-screen">
@@ -29,8 +31,9 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, updateDoc, getDoc, onSnapshot, serverTimestamp, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+        // TUS CREDENCIALES (INTACTAS)
         const firebaseConfig = {
             apiKey: "AIzaSyBpbTRTUWomLgUqnL46nepKnXZQIPRimlI",
             authDomain: "camaras-757d8.firebaseapp.com",
@@ -49,7 +52,16 @@
         let user = null;
         let accountId = "";
         let mode = null;
+        
+        // Variables de Cámara
         let streamInterval = null;
+        let cameraUnsubscribe = null;
+        let activeStream = null;
+        let currentFacingMode = 'environment'; // 'environment' = trasera, 'user' = frontal
+        let currentFlashState = false;
+
+        // Variables de Visualizador
+        const recorders = {};
 
         const appDiv = document.getElementById('app');
 
@@ -96,16 +108,18 @@
             appDiv.innerHTML = `
                 <div class="min-h-screen bg-black flex flex-col relative overflow-hidden">
                     <video id="v-preview" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover opacity-60"></video>
-                    <div class="absolute inset-0 flex flex-col justify-between p-8">
-                        <div class="flex justify-between items-center">
+                    <div class="absolute inset-0 flex flex-col justify-between p-8 pointer-events-none">
+                        <div class="flex justify-between items-center pointer-events-auto">
                             <div class="flex items-center gap-2 bg-rose-600 px-4 py-1.5 rounded-full live-indicator shadow-lg">
                                 <div class="w-2 h-2 bg-white rounded-full"></div>
                                 <span class="text-[10px] font-black uppercase tracking-tighter">Transmitiendo</span>
                             </div>
-                            <span class="text-[10px] font-bold text-slate-400 bg-black/40 px-3 py-1 rounded-full border border-white/10 uppercase">${accountId}</span>
+                            <button onclick="window.flipCamera()" class="bg-black/50 p-3 rounded-full border border-white/10 backdrop-blur-md hover:bg-emerald-600 transition-colors">
+                                <i data-lucide="switch-camera" class="text-white w-5 h-5"></i>
+                            </button>
                         </div>
-                        <div class="flex flex-col items-center gap-6">
-                            <p class="text-white/60 text-[10px] font-bold uppercase tracking-widest text-center">Este dispositivo está enviando video al monitor central</p>
+                        <div class="flex flex-col items-center gap-6 pointer-events-auto">
+                            <p class="text-white/60 text-[10px] font-bold uppercase tracking-widest text-center">Enviando video al monitor central a 4 FPS</p>
                             <button onclick="window.stopCamera()" class="bg-white/10 p-8 rounded-full border border-white/20 backdrop-blur-xl hover:bg-rose-600/30 transition-all active:scale-90">
                                 <i data-lucide="power" class="text-white w-10 h-10"></i>
                             </button>
@@ -124,12 +138,12 @@
                             <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-black font-black text-xs">CP</div>
                             <h1 class="font-black text-sm tracking-tight">RED: ${accountId}</h1>
                         </div>
-                        <button onclick="window.setMode(null)" class="bg-slate-800 text-[10px] font-bold px-4 py-2 rounded-full uppercase tracking-tighter border border-slate-700">Salir</button>
+                        <button onclick="window.setMode(null)" class="bg-slate-800 hover:bg-slate-700 text-[10px] font-bold px-4 py-2 rounded-full uppercase tracking-tighter border border-slate-700 transition-colors">Salir</button>
                     </header>
-                    <div id="camList" class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto w-full">
-                        <div class="col-span-full py-20 text-center opacity-20">
+                    <div id="camList" class="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto w-full">
+                        <div class="col-span-full py-20 text-center opacity-20" id="empty-state">
                             <i data-lucide="scan-eye" class="w-12 h-12 mx-auto mb-4"></i>
-                            <p class="text-xs font-bold uppercase tracking-[0.3em]">Buscando transmisiones activas...</p>
+                            <p class="text-xs font-bold uppercase tracking-[0.3em]">Buscando transmisiones...</p>
                         </div>
                     </div>
                 </div>`;
@@ -137,43 +151,101 @@
             startMonitoring();
         }
 
-        // --- LÓGICA DE BROADCAST (CÁMARA) ---
+        // ==========================================
+        // LÓGICA DE BROADCAST (CÁMARA TRANSMISORA)
+        // ==========================================
         async function startBroadcasting() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: 640 }, 
+                // Obtener video (Frontal o Trasera)
+                activeStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: currentFacingMode, width: { ideal: 640 } }, 
                     audio: false 
                 });
                 const video = document.getElementById('v-preview');
-                video.srcObject = stream;
+                video.srcObject = activeStream;
 
                 const canvas = document.getElementById('procCanvas');
                 const ctx = canvas.getContext('2d');
 
-                // Enviar fotograma cada 800ms
+                const camRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid);
+
+                // Inicializar documento en Firebase
+                await setDoc(camRef, {
+                    accountId,
+                    name: 'Cam-' + user.uid.substring(0,4).toUpperCase(),
+                    flash: false
+                }, { merge: true }); // Merge evita borrar customName si ya existe
+
+                // Ciclo de transmisión (4 cuadros por segundo = fluido y ahorra cuota)
                 streamInterval = setInterval(async () => {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const base64Frame = canvas.toDataURL('image/jpeg', 0.5); 
+                    const base64Frame = canvas.toDataURL('image/jpeg', 0.4); 
 
-                    // CORRECCIÓN: Se cambió 'streams' por 'cameras' para respetar las reglas de Firebase
-                    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid), {
-                        accountId,
-                        frame: base64Frame,
-                        lastSeen: serverTimestamp(),
-                        name: 'Cam-' + user.uid.substring(0,4).toUpperCase()
-                    });
-                }, 800);
+                    try {
+                        await updateDoc(camRef, {
+                            frame: base64Frame,
+                            lastSeen: serverTimestamp()
+                        });
+                    } catch (e) {
+                        // Si da error de "not-found", el visualizador eliminó esta cámara.
+                        if(e.code === 'not-found') window.stopCamera(true);
+                    }
+                }, 250);
+
+                // Escuchar comandos remotos (Flash, Nombre, Expulsión)
+                cameraUnsubscribe = onSnapshot(camRef, (snap) => {
+                    if(!snap.exists()) { window.stopCamera(true); return; } // Fuimos expulsados
+                    const data = snap.data();
+                    
+                    if(data.flash !== undefined && data.flash !== currentFlashState) {
+                        currentFlashState = data.flash;
+                        applyFlash(currentFlashState);
+                    }
+                });
 
             } catch (err) {
-                alert("Error al acceder a la cámara. Por favor permite el acceso.");
+                alert("Error de cámara: Activa los permisos en tu navegador.");
                 window.setMode(null);
             }
         }
 
-        // --- LÓGICA DE MONITOR ---
+        function applyFlash(enable) {
+            if(!activeStream) return;
+            const track = activeStream.getVideoTracks()[0];
+            if(track && typeof track.getCapabilities === 'function') {
+                const caps = track.getCapabilities();
+                if(caps.torch) {
+                    track.applyConstraints({ advanced: [{ torch: enable }] }).catch(e => console.log("Flash no soportado", e));
+                }
+            }
+        }
+
+        window.flipCamera = async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            if(activeStream) activeStream.getTracks().forEach(t => t.stop());
+            clearInterval(streamInterval);
+            if(cameraUnsubscribe) cameraUnsubscribe();
+            await startBroadcasting();
+        }
+
+        window.stopCamera = async (kicked = false) => {
+            clearInterval(streamInterval);
+            if(cameraUnsubscribe) cameraUnsubscribe();
+            if(activeStream) activeStream.getTracks().forEach(t => t.stop());
+            
+            if (user && !kicked) {
+                await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid));
+            }
+            if (kicked) alert("El administrador te ha desconectado de la red.");
+            location.reload();
+        };
+
+        // ==========================================
+        // LÓGICA DE MONITOR (VISUALIZADOR)
+        // ==========================================
         function startMonitoring() {
-            // CORRECCIÓN: Se cambió 'streams' por 'cameras' para coincidir con la escritura
             const streamsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'cameras');
+            
             onSnapshot(streamsCol, (snapshot) => {
                 const list = document.getElementById('camList');
                 if (!list) return;
@@ -182,32 +254,171 @@
                     .map(d => ({id: d.id, ...d.data()}))
                     .filter(s => s.accountId === accountId);
 
+                const emptyState = document.getElementById('empty-state');
+                
                 if (activeStreams.length === 0) {
-                    list.innerHTML = `
-                        <div class="col-span-full py-20 text-center opacity-20">
-                            <i data-lucide="scan-eye" class="w-12 h-12 mx-auto mb-4"></i>
-                            <p class="text-xs font-bold uppercase tracking-[0.3em]">Buscando transmisiones activas...</p>
-                        </div>
-                    `;
-                    lucide.createIcons();
+                    if(!emptyState) {
+                        list.innerHTML = `<div class="col-span-full py-20 text-center opacity-20" id="empty-state"><i data-lucide="scan-eye" class="w-12 h-12 mx-auto mb-4"></i><p class="text-xs font-bold uppercase tracking-[0.3em]">Esperando cámaras...</p></div>`;
+                        lucide.createIcons();
+                    }
                     return;
                 }
+                if(emptyState) emptyState.remove();
 
-                list.innerHTML = activeStreams.map(s => `
-                    <div class="video-container shadow-2xl border border-slate-800 group">
-                        <img id="feed-${s.id}" src="${s.frame}" class="camera-feed" />
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                        <div class="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                            <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full live-indicator"></div>
-                            <span class="text-[10px] font-black uppercase tracking-tighter">${s.name}</span>
-                        </div>
-                    </div>
-                `).join('');
-                lucide.createIcons();
+                // Eliminar tarjetas de cámaras que ya no existen
+                const currentIds = activeStreams.map(c => `cam-card-${c.id}`);
+                Array.from(list.children).forEach(child => {
+                    if (child.id && !currentIds.includes(child.id)) {
+                        if(recorders[child.id.replace('cam-card-', '')]) window.toggleRecording(child.id.replace('cam-card-', '')); // Apagar grabadora
+                        child.remove();
+                    }
+                });
+
+                // Actualizar o crear tarjetas
+                activeStreams.forEach(s => {
+                    const cardId = `cam-card-${s.id}`;
+                    let card = document.getElementById(cardId);
+                    const displayName = s.customName || s.name;
+                    
+                    // Lógica para dibujar en Canvas y grabar video si está activo
+                    if(recorders[s.id] && s.frame) {
+                        const imgObj = new Image();
+                        imgObj.onload = () => recorders[s.id].ctx.drawImage(imgObj, 0, 0, 640, 480);
+                        imgObj.src = s.frame;
+                    }
+
+                    // Si no existe la interfaz para esta cámara, crearla
+                    if (!card) {
+                        card = document.createElement('div');
+                        card.id = cardId;
+                        card.className = "video-container shadow-2xl border border-slate-800 group relative";
+                        
+                        card.innerHTML = `
+                            <img id="feed-${s.id}" class="camera-feed" />
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none"></div>
+                            
+                            <div class="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 pointer-events-none">
+                                <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full live-indicator"></div>
+                                <span id="name-${s.id}" class="text-[10px] font-black uppercase tracking-tighter text-white"></span>
+                            </div>
+
+                            <!-- CONTROLES -->
+                            <div class="absolute bottom-4 left-0 right-0 flex justify-center gap-2 px-2 pb-2">
+                                <button onclick="window.toggleFlash('${s.id}')" title="Encender Flash" class="bg-slate-900/90 hover:bg-yellow-500 p-2.5 rounded-full backdrop-blur-md border border-white/10 transition-colors">
+                                    <i data-lucide="zap" id="flash-icon-${s.id}" class="w-4 h-4 text-slate-300"></i>
+                                </button>
+                                <button onclick="window.takePhoto('${s.id}')" title="Tomar Foto" class="bg-slate-900/90 hover:bg-emerald-600 p-2.5 rounded-full backdrop-blur-md border border-white/10 transition-colors">
+                                    <i data-lucide="camera" class="w-4 h-4 text-slate-300"></i>
+                                </button>
+                                <button onclick="window.toggleRecording('${s.id}')" title="Grabar Video" class="bg-slate-900/90 hover:bg-rose-600 p-2.5 rounded-full backdrop-blur-md border border-white/10 transition-colors">
+                                    <i data-lucide="video" id="rec-icon-${s.id}" class="w-4 h-4 text-slate-300"></i>
+                                </button>
+                                <button onclick="window.renameCamera('${s.id}', '${displayName}')" title="Renombrar" class="bg-slate-900/90 hover:bg-blue-600 p-2.5 rounded-full backdrop-blur-md border border-white/10 transition-colors">
+                                    <i data-lucide="edit-2" class="w-4 h-4 text-slate-300"></i>
+                                </button>
+                                <button onclick="window.deleteCamera('${s.id}')" title="Eliminar Cámara" class="bg-slate-900/90 hover:bg-red-600 p-2.5 rounded-full backdrop-blur-md border border-white/10 transition-colors">
+                                    <i data-lucide="trash-2" class="w-4 h-4 text-slate-300"></i>
+                                </button>
+                            </div>
+                        `;
+                        list.appendChild(card);
+                        lucide.createIcons({root: card});
+                    }
+
+                    // Actualizar datos en vivo de la tarjeta existente (Esto evita el parpadeo de recargar HTML)
+                    document.getElementById(`feed-${s.id}`).src = s.frame || '';
+                    document.getElementById(`name-${s.id}`).innerText = displayName;
+                    
+                    const flashIcon = document.getElementById(`flash-icon-${s.id}`);
+                    if(flashIcon) {
+                        if(s.flash) {
+                            flashIcon.classList.remove('text-slate-300');
+                            flashIcon.classList.add('text-yellow-400');
+                        } else {
+                            flashIcon.classList.add('text-slate-300');
+                            flashIcon.classList.remove('text-yellow-400');
+                        }
+                    }
+                });
             });
         }
 
-        // --- ACCIONES GLOBALES ---
+        // --- FUNCIONES AVANZADAS DE VISUALIZADOR ---
+
+        window.deleteCamera = async (camId) => {
+            if(confirm('¿Desconectar esta cámara de la red?')) {
+                await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', camId));
+            }
+        };
+
+        window.renameCamera = async (camId, oldName) => {
+            const newName = prompt('Ingrese el nuevo nombre para esta cámara:', oldName);
+            if(newName && newName.trim() !== '') {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', camId), {
+                    customName: newName.trim()
+                });
+            }
+        };
+
+        window.toggleFlash = async (camId) => {
+            const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', camId);
+            const snap = await getDoc(ref);
+            if(snap.exists()) {
+                await updateDoc(ref, { flash: !snap.data().flash });
+            }
+        };
+
+        window.takePhoto = (camId) => {
+            const img = document.getElementById(`feed-${camId}`);
+            if(!img || !img.src) return;
+            const link = document.createElement('a');
+            link.href = img.src;
+            link.download = `Foto_Cam_${camId}_${new Date().getTime()}.jpg`;
+            link.click();
+        };
+
+        window.toggleRecording = (camId) => {
+            const icon = document.getElementById(`rec-icon-${camId}`);
+            
+            if(recorders[camId]) {
+                // Detener grabación
+                recorders[camId].recorder.stop();
+                delete recorders[camId];
+                
+                // Quitar animaciones UI
+                icon.classList.remove('text-red-500', 'animate-pulse');
+                icon.classList.add('text-slate-300');
+            } else {
+                // Iniciar grabación creando un canvas oculto temporal
+                const canvas = document.createElement('canvas');
+                canvas.width = 640; canvas.height = 480;
+                const ctx = canvas.getContext('2d');
+                
+                // Capturar el canvas a 4 fps (igual que el stream entrante)
+                const stream = canvas.captureStream(4);
+                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+                const chunks = [];
+                
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `Grabacion_${camId}_${new Date().getTime()}.webm`;
+                    link.click();
+                };
+                
+                recorder.start();
+                recorders[camId] = { recorder, canvas, ctx };
+                
+                // Poner animaciones UI
+                icon.classList.remove('text-slate-300');
+                icon.classList.add('text-red-500', 'animate-pulse');
+            }
+        };
+
+        // --- ACCIONES GLOBALES E INICIALIZACIÓN ---
         window.setAccount = () => {
             const input = document.getElementById('accInput').value.toUpperCase().trim();
             if (input.length >= 4) { accountId = input; render(); }
@@ -215,18 +426,8 @@
 
         window.setMode = (m) => { mode = m; render(); };
 
-        window.stopCamera = async () => {
-            clearInterval(streamInterval);
-            if (user) {
-                // CORRECCIÓN: Se eliminó el stream temporal de la base de datos 'cameras' al cerrar la cámara
-                await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'cameras', user.uid));
-            }
-            location.reload();
-        };
-
         window.logout = () => { location.reload(); };
 
-        // --- AUTH ---
         onAuthStateChanged(auth, (u) => {
             user = u;
             if (!u) {
